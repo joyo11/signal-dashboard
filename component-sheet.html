@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Signal Performance — Component Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..40,400;9..40,500;9..40,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="components.css" />
+<style>
+  body { background: var(--bg); }
+  .sheet { max-width: 1180px; margin: 0 auto; padding: 40px 40px 120px; }
+  .sheet-head { border-bottom: 1px solid var(--line); padding-bottom: 22px; margin-bottom: 8px; display: flex; align-items: flex-end; justify-content: space-between; }
+  .sheet-head h1 { font-size: 30px; }
+  .sheet-head .sub { color: var(--mute); font-size: 14px; margin-top: 6px; }
+  .sheet-back { font-family: var(--mono); font-size: 12.5px; color: var(--mute); text-decoration: none; border: 1px solid var(--line); padding: 7px 11px; border-radius: 8px; background: var(--surface); }
+  .sheet-back:hover { border-color: var(--line-hi); }
+
+  .block { padding: 36px 0 8px; border-bottom: 1px solid var(--line); }
+  .block:last-child { border-bottom: none; }
+  .block-label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 22px; }
+  .block-num { font-family: var(--mono); font-size: 12px; color: var(--mute-2); }
+  .block-title { font-family: var(--display); font-size: 19px; font-weight: 500; letter-spacing: -0.02em; }
+
+  .swatch-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+  .swatch { border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; background: var(--surface); }
+  .swatch .chip-fill { height: 64px; border-bottom: 1px solid var(--line); }
+  .swatch .meta { padding: 9px 11px 11px; }
+  .swatch .nm { font-size: 12.5px; font-weight: 500; color: var(--ink); }
+  .swatch .hx { font-family: var(--mono); font-size: 11.5px; color: var(--mute); margin-top: 2px; }
+
+  .type-row { display: flex; align-items: baseline; gap: 24px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .type-row:last-child { border-bottom: none; }
+  .type-row .tag { width: 150px; flex: 0 0 auto; }
+  .type-row .tag .caption { display: block; }
+  .type-row .tag .spec { font-family: var(--mono); font-size: 11px; color: var(--mute-2); margin-top: 4px; }
+
+  .demo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .demo-grid.three { grid-template-columns: repeat(3, 1fr); }
+  .demo-cap { font-family: var(--mono); font-size: 11.5px; color: var(--mute-2); margin-bottom: 10px; display: block; }
+
+  .inv-list { columns: 2; column-gap: 36px; }
+  .inv-item { break-inside: avoid; display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .inv-item .nm { font-family: var(--mono); font-size: 13px; color: var(--ink); min-width: 168px; }
+  .inv-item .ds { font-size: 13px; color: var(--mute); }
+
+  .spacing-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .sp { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .sp .box { background: var(--surface-alt); border: 1px solid var(--line-hi); }
+  .sp .lab { font-family: var(--mono); font-size: 11px; color: var(--mute); }
+
+  .radii-row { display: flex; gap: 16px; }
+  .rad { width: 88px; height: 64px; background: var(--surface-alt); border: 1px solid var(--line-hi); display: grid; place-items: end center; padding-bottom: 6px; font-family: var(--mono); font-size: 11px; color: var(--mute); }
+
+  .axis-demo { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); padding: 16px; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="sheet-head">
+    <div>
+      <h1>Component Sheet</h1>
+      <div class="sub">Signal Performance Dashboard · tokens, type, and the named component inventory</div>
+    </div>
+    <a class="sheet-back" href="index.html">← Back to dashboard</a>
+  </div>
+
+  <!-- 01 COLOR -->
+  <section class="block">
+    <div class="block-label"><span class="block-num">01</span><span class="block-title">Color tokens</span></div>
+    <div class="swatch-grid" id="coreSwatches"></div>
+    <div style="height:18px"></div>
+    <span class="caption" style="display:block;margin-bottom:12px">Series palette · curated, not chart-library defaults</span>
+    <div class="swatch-grid" id="seriesSwatches"></div>
+  </section>
+
+  <!-- 02 TYPE -->
+  <section class="block">
+    <div class="block-label"><span class="block-num">02</span><span class="block-title">Typography</span></div>
+    <div class="type-row">
+      <div class="tag"><span class="caption">Display</span><div class="spec">Fraunces · 500 · -0.02em</div></div>
+      <div class="display" style="font-size:34px">Retime first.</div>
+    </div>
+    <div class="type-row">
+      <div class="tag"><span class="caption">Heading</span><div class="spec">Fraunces · 500 · 19px</div></div>
+      <div class="display" style="font-size:19px">State St &amp; 800 South</div>
+    </div>
+    <div class="type-row">
+      <div class="tag"><span class="caption">Body</span><div class="spec">Inter · 400 · 15px</div></div>
+      <div style="font-size:15px;max-width:520px">Clinical and confident. The single best compliment this dashboard can get is “I knew what to fix in five seconds.”</div>
+    </div>
+    <div class="type-row">
+      <div class="tag"><span class="caption">Numeric</span><div class="spec">JetBrains Mono · tabular</div></div>
+      <div class="mono" style="font-size:26px">222 · 64.5% · 93.2</div>
+    </div>
+    <div class="type-row">
+      <div class="tag"><span class="caption">Caption</span><div class="spec">Inter · 600 · 11px · +6%</div></div>
+      <div class="caption">Avg Arrivals-On-Red</div>
+    </div>
+  </section>
+
+  <!-- 03 SPACING & SHAPE -->
+  <section class="block">
+    <div class="block-label"><span class="block-num">03</span><span class="block-title">Spacing &amp; shape</span></div>
+    <span class="demo-cap">8px spacing grid</span>
+    <div class="spacing-row" id="spacingRow" style="margin-bottom:28px"></div>
+    <span class="demo-cap">Corner radius</span>
+    <div class="radii-row">
+      <div class="rad" style="border-radius:6px">6 · sm</div>
+      <div class="rad" style="border-radius:8px">8 · button</div>
+      <div class="rad" style="border-radius:10px">10 · card</div>
+    </div>
+  </section>
+
+  <!-- 04 BUTTONS -->
+  <section class="block">
+    <div class="block-label"><span class="block-num">04</span><span class="block-title">Buttons</span></div>
+    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn--primary">Open retiming ticket</button>
+      <button class="btn btn--ghost">Export</button>
+      <button class="btn btn--ghost btn--sm">Inspect ↗</button>
+      <button class="btn btn--primary" style="outline:1.5px solid var(--ink);outline-offset:2px">Keyboard-focused</button>
+    </div>
+  </section>
+
+  <!-- 05 TABS -->
+  <section class="block">
+    <div class="block-label"><span class="block-num">05</span><span class="block-title">Tabs · animated underline</span></div>
+    <div class="tabs" style="margin-bottom:0">
+      <button class="tab">Performance</button>
+      <button class="tab is-active">Priority<span class="tab-count">12</span></button>
+      <button class="tab">Alerts<span class="tab-count">7</span></button>
+      <span class="tab-underline" style="left:140px;width:84px"></span>
+    </div>
+  </section>
+
+  <!-- 06 KPI CARD -->
+  <section class="block">
+    <div class="block-label"><span class="block-num">06</span><span class="block-title">KpiCard</span></div>
+    <div class="demo-grid three">
+      <div class="kpi"><span class="caption">Split Failures</span><div class="kpi-val"><span class="mono">399</span></div><div class="kpi-delta regress">↑ 27% at SIG-1003</div></div>
+      <div class="kpi"><span class="caption">Avg Arrivals-on-Red</span><div class="kpi-val"><span class="mono">48.6</span><span class="unit">%</span></div><div class="kpi-delta improve">↓ 1.8 pts</div></div>
+      <div class="kpi"><span class="caption">High-Priority Signals</span><div class="kpi-val"><span class="mono">1</span></div><div class="kpi-delta mute">no change</div></div>
+    </div>
+  </section>
+
+  <!-- 07 PRIORITY CELLS -->
+  <section class="block">
+    <div class="block-label"><span class="block-num">07</span><span class="block-title">PriorityScoreCell &amp; PriorityPill</span></div>
+    <div class="demo-grid">
+      <div>
+        <span class="demo-cap">Score cell · bar shifts accent → warn → alert</span>
+        <div class="axis-demo" id="scoreCells"></div>
+      </div>
+      <div>
+        <span class="demo-cap">Priority pill</span>
+        <div class="axis-demo" style="display:flex;gap:28px;align-items:center">
+          <span class="pri-pill high"><span class="pdot"></span>High</span>
+          <span class="pri-pill low"><span class="pdot"></span>Low</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 ALERT CARDS -->
+  <section class="block">
+    <div class="block-label"><span class="block-num">08</span><span class="block-title">AlertCard &amp; AlertSeverityBar</span></div>
+    <div class="demo-grid">
+      <div class="alert-card sev-alert">
+        <div class="alert-row1"><div class="alert-sig"><span class="sdot" style="background:var(--alert)"></span><span class="sid">SIG-1002</span><span class="sname">State St &amp; 600 South</span></div><span class="alert-time">Tue Jun 3, 8:00 AM</span></div>
+        <div class="alert-line">−101.6<span class="sig-val">σ</span> volume, possible detector fault.</div>
+        <div class="alert-sub">AoR 90% (+5.5σ). Loop on NB approach not reporting.</div>
+        <button class="alert-inspect">inspect ↗</button>
+      </div>
+      <div class="alert-card sev-warn">
+        <div class="alert-row1"><div class="alert-sig"><span class="sdot" style="background:var(--s-1004)"></span><span class="sid">SIG-1004</span><span class="sname">State St &amp; 1000 South</span></div><span class="alert-time">Tue Jun 3, 5:30 PM</span></div>
+        <div class="alert-line">+2.9<span class="sig-val">σ</span> pedestrian delay on the EW crossing.</div>
+        <div class="alert-sub">Recall not serving during PM peak.</div>
+        <button class="alert-inspect">inspect ↗</button>
+      </div>
+    </div>
+    <div style="margin-top:14px;font-size:12.5px;color:var(--mute)">Left bar: <span style="color:var(--alert);font-weight:600">alert</span> if any σ &gt; 4, else <span style="color:var(--warn);font-weight:600">warn</span>. Severity reinforced by sign + value, never color alone.</div>
+  </section>
+
+  <!-- 09 CHART AXES -->
+  <section class="block">
+    <div class="block-label"><span class="block-num">09</span><span class="block-title">Chart axes &amp; heatmap scale</span></div>
+    <div class="demo-grid">
+      <div>
+        <span class="demo-cap">Hairline rules · --line at 60% · no grid noise</span>
+        <div class="axis-demo"><div id="axisDemo"></div></div>
+      </div>
+      <div>
+        <span class="demo-cap">Heatmap scale · paper → warn → alert</span>
+        <div class="axis-demo" style="display:flex;align-items:center;gap:14px;height:100%">
+          <span class="mono" style="font-size:12px;color:var(--mute)">0</span>
+          <span style="flex:1;height:14px;border-radius:4px;background:linear-gradient(90deg,#FAF8F4,#C97A1E,#C0392B);border:1px solid var(--line)"></span>
+          <span class="mono" style="font-size:12px;color:var(--mute)">max</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 INVENTORY -->
+  <section class="block">
+    <div class="block-label"><span class="block-num">10</span><span class="block-title">Components inventory</span></div>
+    <div class="inv-list" id="inventory"></div>
+  </section>
+
+</div>
+
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="component-sheet.js"></script>
+</body>
+</html>

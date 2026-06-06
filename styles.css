@@ -1,0 +1,155 @@
+/* ============================================================
+   Signal Performance Dashboard — Design Tokens & Base Styles
+   Light theme. 8px spacing grid. 4px baseline.
+   ============================================================ */
+
+:root {
+  /* ---- Palette ---- */
+  --bg:          #FAFAF7;   /* paper white, slight warmth */
+  --surface:     #FFFFFF;
+  --surface-alt: #F4F2EC;   /* subtle card / sidebar fill */
+  --line:        #E6E3DC;
+  --line-hi:     #D6D2C8;
+  --ink:         #16170F;   /* near-black: headings + numbers */
+  --mute:        #6E6B62;
+  --mute-2:      #918D82;
+  --accent:      #1F6E43;   /* deep green; healthy / brand */
+  --accent-soft: #E7F0EA;
+  --warn:        #C97A1E;   /* signal amber */
+  --warn-soft:   #FFF6E0;
+  --alert:       #C0392B;   /* signal red — sparingly */
+  --alert-soft:  #FBE9E6;
+
+  /* ---- Series palette (curated, NOT plotly defaults) ---- */
+  --s-1001: #2D5F8A;  /* slate blue */
+  --s-1002: #1F6E43;  /* accent green */
+  --s-1003: #C0392B;  /* alert red — the troublemaker */
+  --s-1004: #8E6E2F;  /* warm bronze */
+
+  /* ---- Type ---- */
+  --display: "Fraunces", Georgia, serif;
+  --body:    "Inter", -apple-system, system-ui, sans-serif;
+  --mono:    "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* ---- Shape ---- */
+  --r-card: 10px;
+  --r-btn:  8px;
+  --r-sm:   6px;
+
+  /* ---- Motion ---- */
+  --ease-in:  cubic-bezier(0.2, 0, 0, 1);   /* entry */
+  --ease-out: cubic-bezier(0.4, 0, 1, 1);   /* exit */
+  --t-fast:   80ms;
+  --t-med:    160ms;
+  --t-slow:   220ms;
+
+  /* ---- Layout ---- */
+  --sidebar-w: 280px;
+  --main-max:  1180px;
+  --topbar-h:  56px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* tabular figures everywhere numbers live */
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ---- Typographic primitives ---- */
+.caption {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--mute);
+}
+.display {
+  font-family: var(--display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-optical-sizing: auto;
+}
+
+h1, h2, h3 { font-family: var(--display); font-weight: 500; letter-spacing: -0.02em; margin: 0; }
+
+a { color: inherit; }
+
+::selection { background: var(--accent-soft); }
+
+/* ---- Buttons ---- */
+.btn {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--r-btn);
+  font-family: var(--body);
+  font-size: 13.5px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  transition: background var(--t-fast) var(--ease-in),
+              border-color var(--t-fast) var(--ease-in),
+              color var(--t-fast) var(--ease-in);
+}
+.btn--primary { background: var(--ink); color: #fff; }
+.btn--primary:hover { background: #2a2c1f; }
+.btn--ghost { border-color: var(--line); color: var(--ink); }
+.btn--ghost:hover { background: var(--surface-alt); border-color: var(--line-hi); }
+.btn--sm { height: 30px; padding: 0 11px; font-size: 12.5px; }
+
+/* keyboard focus ring — 1.5px ink ring, 2px outside */
+:focus-visible {
+  outline: 1.5px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---- Generic card ---- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  transition: border-color var(--t-med) var(--ease-in),
+              box-shadow var(--t-med) var(--ease-in);
+}
+.card:hover { border-color: var(--line-hi); }
+
+/* hairline tooltip */
+.tooltip {
+  position: fixed;
+  z-index: 200;
+  pointer-events: none;
+  background: var(--ink);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: var(--r-sm);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity var(--t-fast) var(--ease-in),
+              transform var(--t-fast) var(--ease-in);
+}
+.tooltip.is-on { opacity: 1; transform: translateY(0); }
+
+/* scrollbars — quiet */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-hi); border-radius: 8px; border: 3px solid var(--bg); }
+::-webkit-scrollbar-track { background: transparent; }
