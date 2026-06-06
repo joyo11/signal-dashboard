@@ -1,0 +1,8 @@
+# Vercel serves the static dashboard only.
+# The Python analysis layer lives in the repo, not the deploy.
+src/
+scripts/
+data/
+notebooks/
+requirements.txt
+*.py
