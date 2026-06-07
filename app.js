@@ -70,9 +70,15 @@
   /* ================= Insight banner ================= */
   function renderInsight() {
     $("#insightText").innerHTML =
-      `<span class="insight-lead">Insight.</span> <b>State St &amp; 800 South</b> (SIG-1003) is the top retiming candidate: ` +
-      `<span class="mono">222</span> PM-peak split failures over the window, concentrated around ` +
-      `<span class="mono">19:00</span> weekdays.`;
+      `<span class="insight-lead">Insight.</span> ` + D.insightHtml;
+  }
+
+  // Tab counts reflect the real pipeline output.
+  function renderTabCounts() {
+    const pc = $('.tab[data-tab="priority"] .tab-count');
+    if (pc) pc.textContent = D.priority.length;
+    const ac = $("#alertTabCount");
+    if (ac) ac.textContent = D.alerts.length;
   }
 
   /* ================= Sidebar filters ================= */
@@ -195,6 +201,8 @@
   }
 
   function renderPerformance() {
+    const lcw = $("#lcWindow");
+    if (lcw) lcw.textContent = D.windowLabel;
     const lc = $("#lineChart");
     if (state.active.length === 0) { lc.innerHTML = emptyState(); $("#smWeekday").innerHTML = ""; $("#smWeekend").innerHTML = ""; return; }
     C.LineChart(lc, { series: D.timeseries, dayList: D.dayList, activeIds: state.active, height: 340 });
@@ -226,6 +234,7 @@
       const sig = D.featured.find((s) => s.id === r.id);
       const tr = document.createElement("tr");
       if (r.pri === "High") tr.classList.add("is-high");
+      else if (r.pri === "Medium") tr.classList.add("is-medium");
       const barW = (r.score / maxScore) * 70; // px-ish within cell
       tr.innerHTML = `
         <td class="l rank">${r.rank}</td>
@@ -323,7 +332,7 @@
           : "Within normal range. Continue monitoring; no retiming action required this window."}
       </p>
       <div class="drawer-section-t">Window context</div>
-      <p style="font-size:13.5px;color:var(--mute);margin:0;line-height:1.55">Volume ${r.vol} vph · ${D.windowLabel} · weekday PM peak. Composite score weights split failures (40%), arrivals-on-red (30%), pedestrian delay (20%), volume (10%).</p>`;
+      <p style="font-size:13.5px;color:var(--mute);margin:0;line-height:1.55">Volume ${r.vol} vph · ${D.windowLabel} · weekday PM peak. Composite score weights PM-peak split failures (55%), arrivals-on-red (30%), pedestrian delay (15%).</p>`;
     $("#scrim").classList.add("is-on");
     $("#drawer").classList.add("is-on");
     $("#drawer").setAttribute("aria-hidden", "false");
@@ -352,6 +361,7 @@
   function init() {
     try { const saved = localStorage.getItem("sp_tab"); if (saved) state.tab = saved; } catch (e) {}
     renderInsight();
+    renderTabCounts();
     renderKpis();
     renderSigChips();
     renderDow();

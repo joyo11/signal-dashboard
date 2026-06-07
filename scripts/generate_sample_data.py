@@ -26,11 +26,23 @@ import numpy as np
 import pandas as pd
 
 # Real-ish SLC corridor names so it reads like a real export.
+# `cap` = base hourly capacity (vph), `aor_base` = baseline arrivals-on-red
+# fraction. The first four (State St) are the "featured" signals the
+# dashboard charts. SIG-1003 is the chronic PM offender; SIG-1002 carries
+# the injected detector fault.
 INTERSECTIONS = [
-    {"id": "SIG-1001", "name": "State St & 400 South", "corridor": "State St"},
-    {"id": "SIG-1002", "name": "State St & 600 South", "corridor": "State St"},
-    {"id": "SIG-1003", "name": "State St & 800 South", "corridor": "State St"},
-    {"id": "SIG-1004", "name": "700 East & 2100 South", "corridor": "700 East"},
+    {"id": "SIG-1001", "name": "State St & 400 South",    "corridor": "State St",   "cap": 1800, "aor_base": 0.42},
+    {"id": "SIG-1002", "name": "State St & 600 South",    "corridor": "State St",   "cap": 1700, "aor_base": 0.45},
+    {"id": "SIG-1003", "name": "State St & 800 South",    "corridor": "State St",   "cap": 1900, "aor_base": 0.55},
+    {"id": "SIG-1004", "name": "State St & 1000 South",   "corridor": "State St",   "cap": 1400, "aor_base": 0.30},
+    {"id": "SIG-1005", "name": "200 West & 700 South",    "corridor": "200 West",   "cap": 1200, "aor_base": 0.38},
+    {"id": "SIG-1006", "name": "300 West & 600 South",    "corridor": "300 West",   "cap": 1500, "aor_base": 0.40},
+    {"id": "SIG-1007", "name": "400 South & 500 East",    "corridor": "400 South",  "cap": 1600, "aor_base": 0.41},
+    {"id": "SIG-1008", "name": "500 East & 400 South",    "corridor": "500 East",   "cap": 1300, "aor_base": 0.36},
+    {"id": "SIG-1009", "name": "700 East & 2100 South",   "corridor": "700 East",   "cap": 1700, "aor_base": 0.43},
+    {"id": "SIG-1010", "name": "1100 East & 1700 South",  "corridor": "1100 East",  "cap": 1100, "aor_base": 0.33},
+    {"id": "SIG-1011", "name": "900 East & 900 South",    "corridor": "900 East",   "cap": 1450, "aor_base": 0.39},
+    {"id": "SIG-1012", "name": "University & 200 South",   "corridor": "University", "cap": 1550, "aor_base": 0.40},
 ]
 
 
@@ -53,22 +65,12 @@ def make_row(
 ) -> dict:
     is_weekend = ts.dayofweek >= 5
     hour = ts.hour
-    base_capacity = {
-        "SIG-1001": 1800,
-        "SIG-1002": 1700,
-        "SIG-1003": 1900,
-        "SIG-1004": 1400,
-    }[sig["id"]]
+    base_capacity = sig["cap"]
 
     vol = max(0.0, hourly_volume(hour, is_weekend, base_capacity, rng))
     saturation = min(1.0, vol / base_capacity)
 
-    aor_base = {
-        "SIG-1001": 0.42,
-        "SIG-1002": 0.45,
-        "SIG-1003": 0.55,
-        "SIG-1004": 0.30,
-    }[sig["id"]]
+    aor_base = sig["aor_base"]
     arrivals_on_red_pct = float(
         np.clip(aor_base + 0.20 * saturation + rng.normal(0, 0.03), 0.05, 0.85)
     )

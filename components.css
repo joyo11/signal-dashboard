@@ -235,10 +235,14 @@ table.ptable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .pri-pill .pdot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
 .pri-pill.high { color: var(--alert); }
 .pri-pill.high .pdot { background: var(--alert); }
+.pri-pill.medium { color: var(--warn); }
+.pri-pill.medium .pdot { background: var(--warn); }
 .pri-pill.low { color: var(--mute); }
 .pri-pill.low .pdot { background: transparent; border: 1.5px solid var(--line-hi); }
 .ptable tbody tr.is-high { background: linear-gradient(90deg, var(--alert-soft), transparent 60%); }
 .ptable tbody tr.is-high:hover { background: linear-gradient(90deg, #F8DDD8, transparent 60%); }
+.ptable tbody tr.is-medium { background: linear-gradient(90deg, var(--warn-soft), transparent 60%); }
+.ptable tbody tr.is-medium:hover { background: linear-gradient(90deg, #FBEFD2, transparent 60%); }
 
 /* ---------- Alerts ---------- */
 .alert-group-head { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mute); margin: 22px 0 10px; }

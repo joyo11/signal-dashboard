@@ -291,7 +291,7 @@ with tab2:
 with tab3:
     st.subheader("Abnormal behavior alerts")
     st.caption(
-        "Each (intersection, day-of-week, hour) gets its own baseline. "
+        "Each (intersection, weekday/weekend, hour) gets its own baseline. "
         "An hour is flagged when it deviates beyond the sensitivity threshold."
     )
 

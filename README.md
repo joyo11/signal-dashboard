@@ -28,10 +28,11 @@ The dashboard has three layers, in the order an analyst works them:
 1. **Performance.** Hourly arrivals-on-red across selected intersections, plus
    weekday vs. weekend hour-of-day small-multiples. Anomalous points pulse so
    the eye lands on them first.
-2. **Priority.** A dense ranked retiming queue scored by a composite of split
-   failures (40%), arrivals-on-red (30%), pedestrian delay (20%), and volume
-   (10%). The worst signal sits at the top with a red row and a High pill. A
-   split-failure heatmap (signals x hours) sits below.
+2. **Priority.** A dense ranked retiming queue scored by a composite of PM-peak
+   split failures (55%), arrivals-on-red (30%), and pedestrian delay (15%),
+   each min-max normalized across signals. The worst signal sits at the top
+   with a red row and a High pill. A split-failure heatmap (signals x hours)
+   sits below.
 3. **Alerts.** Alerts-per-signal bars, a severity-over-time scatter, and a
    date-grouped feed of abnormal behavior with signed sigma values. The
    analyst's "what's broken" inbox.
@@ -73,14 +74,19 @@ ATSPM-faithful schema so real exports drop in as a CSV.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python scripts/generate_sample_data.py    # writes data/raw/atspm_sample.csv
-streamlit run src/app.py                   # the Python/Streamlit view of the same data
+python scripts/generate_sample_data.py     # writes data/raw/atspm_sample.csv
+python scripts/export_dashboard_data.py    # runs the pipeline, writes data.js
+streamlit run src/app.py                    # the Python/Streamlit view of the same data
 ```
 
 - `clean_data.py` loads, validates, and derives metrics.
 - `analysis.py` computes the composite priority score and headline insight.
-- `model.py` builds per-`(signal, day-of-week, hour)` baselines and z-scores
+- `model.py` builds per-`(signal, weekday/weekend, hour)` baselines and z-scores
   each hour to flag detector faults and unexpected congestion.
+- `export_dashboard_data.py` is the bridge: it runs the full pipeline and
+  serializes the results into `data.js`, so **every number the web dashboard
+  shows is computed by this code**, not hand-authored. Regenerate `data.js`
+  any time the data or scoring changes.
 
 The data source schema mirrors UDOT Open ATSPM exports
 (`udottraffic.utah.gov/atspm`). The included sample is synthetic but
@@ -93,15 +99,16 @@ and a 36-hour detector-fault window so the anomaly detector has something to fin
 - **Split failure.** A phase that ran out of green during a cycle. Repeated
   failures = oversaturated phase = retime candidate.
 - **Pedestrian delay.** Average wait after pressing the button.
-- **Hour-of-week baseline.** Each `(signal, day-of-week, hour)` gets its own
+- **Time-of-week baseline.** Each `(signal, weekday/weekend, hour)` gets its own
   mean and std; today's hour is z-scored against its bucket.
 
 ## Limitations
 
-The dashboard data is a deterministic, coherent fabrication that tells the
-story above; the Python sample data is synthetic but schema-faithful. Swap in
-real UDOT exports, or in production the AMC's live SCATS / RITIS feeds, to
-extend this to real-time alerting across the arterial network.
+The dashboard runs on synthetic, schema-faithful sample data: the numbers on
+screen are real pipeline output, but the underlying signal data is generated,
+not measured. Swap in real UDOT exports, or in production the AMC's live
+SCATS / RITIS feeds, to extend this to real-time alerting across the arterial
+network.
 
 ## Author
 
