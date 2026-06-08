@@ -386,3 +386,39 @@ table.ptable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .seg button { font-size: 12px; }
   input[type="range"].sigma { width: 100%; }
 }
+
+/* ---------- Dashboard assistant (grounded helper) ---------- */
+.asst {
+  position: fixed; top: calc(var(--topbar-h) + 10px); right: 18px; z-index: 140;
+  width: 360px; max-width: calc(100vw - 28px); height: min(72vh, 560px);
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(20,21,15,0.16);
+  opacity: 0; transform: translateY(-8px) scale(0.98); pointer-events: none;
+  transition: opacity 160ms var(--ease-in), transform 160ms var(--ease-in);
+}
+.asst.is-on { opacity: 1; transform: none; pointer-events: auto; }
+.asst-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 14px; border-bottom: 1px solid var(--line); }
+.asst-title { display: flex; align-items: center; gap: 8px; font-family: var(--display); font-size: 14.5px; font-weight: 500; letter-spacing: -0.01em; }
+.asst-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); flex: 0 0 auto; }
+.asst-close { background: none; border: 1px solid var(--line); border-radius: 7px; width: 26px; height: 26px; display: grid; place-items: center; color: var(--mute); cursor: pointer; }
+.asst-close:hover { background: var(--surface-alt); }
+.asst-body { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.asst-msg { max-width: 86%; font-size: 13.5px; line-height: 1.5; border-radius: 12px; padding: 9px 12px; }
+.asst-msg p { margin: 0 0 6px; } .asst-msg p:last-child { margin-bottom: 0; }
+.asst-msg.bot { align-self: flex-start; background: var(--surface-alt); border: 1px solid var(--line); color: var(--ink); border-bottom-left-radius: 4px; }
+.asst-msg.user { align-self: flex-end; background: var(--ink); color: var(--bg); border-bottom-right-radius: 4px; }
+.asst-list { margin: 4px 0 0; padding-left: 18px; } .asst-list li { margin: 2px 0; }
+.asst-action { margin-top: 8px; font-family: var(--body); font-size: 12.5px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 5px 10px; cursor: pointer; }
+.asst-action:hover { background: var(--bg); border-color: var(--line-hi); }
+.asst-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }
+.asst-chip { font-size: 12px; color: var(--mute); background: var(--surface-alt); border: 1px solid var(--line); border-radius: 20px; padding: 5px 11px; cursor: pointer; transition: color var(--t-fast), border-color var(--t-fast); }
+.asst-chip:hover { color: var(--ink); border-color: var(--line-hi); }
+.asst-form { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line); }
+.asst-form input { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 13.5px; }
+.asst-form input:focus { outline: none; border-color: var(--line-hi); }
+.asst-send { width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; cursor: pointer; }
+.asst-send:hover { background: var(--accent); }
+@media (max-width: 560px) {
+  .asst { right: 12px; left: 12px; width: auto; max-width: none; height: min(76vh, 540px); }
+}

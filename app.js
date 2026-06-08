@@ -461,6 +461,68 @@
     });
   }
 
+  /* ================= assistant (grounded helper) ================= */
+  function asstFindSignal(t) {
+    let m = t.match(/sig[\s-]?(\d{3,4})/); if (m && sigById["SIG-" + m[1]]) return "SIG-" + m[1];
+    m = t.match(/\b(\d{3,4})\b/); if (m && sigById["SIG-" + m[1]]) return "SIG-" + m[1];
+    for (const s of SIG) { const cross = (s.name.split("&")[1] || "").trim().toLowerCase(); if (cross && t.includes(cross)) return s.id; }
+    for (const s of SIG) { if (t.includes(s.name.toLowerCase())) return s.id; }
+    return null;
+  }
+  function asstFault() { return V.alerts.find((a) => a.metric === "volume"); }
+  function asstSigCard(r, extra) {
+    const rec = r.pri === "High"
+      ? "Recommendation: re-time the PM-peak split plan, reallocate green to the heaviest through phase 16:00–19:00 on weekdays."
+      : r.pri === "Medium" ? "Watchlist, review the PM-peak split allocation." : "Within normal range, keep monitoring.";
+    return `<p><b>${esc(r.name)}</b> (${r.id}) is rank <span class="mono">${r.rank}</span> of ${V.priority.length}, score <span class="mono">${r.score.toFixed(1)}</span> (${r.pri}).</p>
+      <ul class="asst-list"><li>PM split failures: <span class="mono">${r.pmsf}</span></li><li>Arrivals-on-red: <span class="mono">${r.aor.toFixed(1)}%</span></li><li>Ped delay: <span class="mono">${r.ped.toFixed(1)}s</span></li><li>Volume: <span class="mono">${Math.round(r.vol)} vph</span></li></ul>
+      ${extra ? `<p>${extra}</p>` : ""}<p>${rec}</p><button class="asst-action" data-sig="${r.id}">Open full detail →</button>`;
+  }
+  function asstAnswer(q) {
+    const t = q.toLowerCase().trim();
+    const has = (...ws) => ws.some((w) => t.includes(w));
+    const P = V.priority, top = P[0], win = windowLabel();
+    const highN = P.filter((r) => r.pri === "High").length, A = V.alerts;
+    const sid = asstFindSignal(t);
+    if (sid) return asstSigCard(P.find((r) => r.id === sid));
+    if (has("help", "what can you", "what do you", "capab")) return `<p>I read the dashboard's live numbers for the current filters. Ask me about the worst signal, alerts, a specific intersection (e.g. "why SIG-1003"), or a metric. Try a chip below.</p>`;
+    if (t === "" || has("happening", "summary", "overview", "today", "status", "going on", "brief")) {
+      const f = asstFault();
+      return `<p>Over <b>${win}</b>, <b>${esc(top.name)}</b> (${top.id}) is the top retiming candidate, score <span class="mono">${top.score.toFixed(1)}</span> (${top.pri}). ${highN} high-priority signal${highN !== 1 ? "s" : ""}, ${A.length} alert${A.length !== 1 ? "s" : ""} at σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span>${f ? `, including a likely detector fault at <b>${f.id}</b>` : ""}.</p>`;
+    }
+    if (has("worst", "retime", "first", "top ", "priority", "attention", "fix", "biggest")) return asstSigCard(top, `It tops the queue of ${P.length} signals.`);
+    if (has("alert", "anomal", "fault", "detector", "broken", "spike", "wrong")) {
+      if (!A.length) return `<p>No alerts above σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span> in this window. Lower the threshold in the sidebar to surface more.</p>`;
+      const li = A.slice(0, 5).map((a) => `<li><b>${a.id}</b> ${a.line} <span style="color:var(--mute)">· ${FMT.DOW[a.when.getDay()]} ${FMT.MON[a.when.getMonth()]} ${a.when.getDate()}</span></li>`).join("");
+      return `<p>${A.length} alert${A.length !== 1 ? "s" : ""} at σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span>:</p><ul class="asst-list">${li}</ul>`;
+    }
+    if (has("split fail", "split-fail", "split")) return `<p>Split failures are phases that ran out of green, the strongest oversaturation signal (55% of the score). <b>${esc(top.name)}</b> leads with <span class="mono">${top.pmsf}</span> PM-peak failures over ${win}.</p>`;
+    if (has("arrivals", "on red", "aor", "progression")) { const k = V.kpis.find((x) => x.label.includes("Arrivals")); return `<p>Arrivals-on-red is the share of vehicles hitting a red, high under load means poor progression (30% of the score). Network average is <span class="mono">${k.value}%</span> (${k.delta}).</p>`; }
+    if (has("volume", "vph", "vehicles", "traffic")) { const k = V.kpis[0]; return `<p>Total volume over ${win} is <span class="mono">${k.value} ${k.unit}</span> (${k.delta}).</p>`; }
+    if (has("ped", "pedestrian", "crossing", "walk")) return `<p>Pedestrian delay is the average wait after a button press (15% of the score). <b>${esc(top.name)}</b> averages <span class="mono">${top.ped.toFixed(1)}s</span>.</p>`;
+    if (has("score", "composite", "weight", "rank", "calculat")) return `<p>Composite score = 55% PM-peak split failures + 30% arrivals-on-red + 15% pedestrian delay, each min-max normalized across the ${P.length} signals, scaled 0–100. ≥70 = High, ≥40 = Medium.</p>`;
+    if (has("filter", "window", "sigma", "threshold", "days", "date range")) return `<p>Current view: <b>${state.win}-day</b> window (${win}), σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span>, charting ${state.active.length} signal${state.active.length !== 1 ? "s" : ""}. Change these in the sidebar and my answers update live.</p>`;
+    if (has("how many", "number of", "count")) return `<p>${SIG.length} signals total; the queue ranks all ${P.length}. ${highN} are High priority right now.</p>`;
+    if (has("hi", "hello", "hey")) return `<p>Hi, I'm the dashboard helper. Ask me what to retime first, about alerts, or about any intersection.</p>`;
+    return `<p>I can answer from the live data: the worst signal, alerts, a specific intersection (e.g. "why SIG-1003"), or a metric (split failures, arrivals-on-red, volume, pedestrian delay). Try a chip below.</p>`;
+  }
+  function wireAssistant() {
+    const panel = $("#asst"), btn = $("#asstBtn"), body = $("#asstBody"), chips = $("#asstChips"), form = $("#asstForm"), input = $("#asstInput");
+    if (!panel || !btn) return;
+    let greeted = false;
+    const add = (html, who) => { const m = document.createElement("div"); m.className = "asst-msg " + who; if (who === "user") m.textContent = html; else m.innerHTML = html; body.appendChild(m); body.scrollTop = body.scrollHeight; };
+    const ask = (q) => { add(q, "user"); setTimeout(() => add(asstAnswer(q), "bot"), 180); };
+    const SUGG = ["What's happening?", "What do I retime first?", "Any alerts?", "Explain the score"];
+    chips.innerHTML = ""; SUGG.forEach((c) => { const b = document.createElement("button"); b.className = "asst-chip"; b.textContent = c; b.addEventListener("click", () => ask(c)); chips.appendChild(b); });
+    const open = () => { panel.classList.add("is-on"); panel.setAttribute("aria-hidden", "false"); btn.setAttribute("aria-expanded", "true"); if (!greeted) { greeted = true; add(asstAnswer(""), "bot"); } setTimeout(() => input.focus(), 80); };
+    const close = () => { panel.classList.remove("is-on"); panel.setAttribute("aria-hidden", "true"); btn.setAttribute("aria-expanded", "false"); };
+    btn.addEventListener("click", () => (panel.classList.contains("is-on") ? close() : open()));
+    $("#asstClose").addEventListener("click", close);
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && panel.classList.contains("is-on")) close(); });
+    form.addEventListener("submit", (e) => { e.preventDefault(); const q = input.value.trim(); if (!q) return; input.value = ""; ask(q); });
+    body.addEventListener("click", (e) => { const a = e.target.closest(".asst-action"); if (a) { const r = V.priority.find((x) => x.id === a.dataset.sig); if (r) openDrawer(r); } });
+  }
+
   /* ================= refresh / load / init ================= */
   function refresh(animateKpi) {
     V.cur = rowsFor(winIndices());
@@ -485,7 +547,7 @@
     const sc = $("#sampleCount"); if (sc) sc.textContent = `${SIG.length} signals`;
 
     renderSigChips(); renderDow(); renderLegend();
-    wireFilters(); wireTabs(); wireUserMenu(); wireThemeToggle(); updateFilterActive();
+    wireFilters(); wireTabs(); wireUserMenu(); wireThemeToggle(); wireAssistant(); updateFilterActive();
     $$(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === state.tab));
     $$(".tabpanel").forEach((p) => p.classList.toggle("is-on", p.id === "panel-" + state.tab));
     moveUnderline();
