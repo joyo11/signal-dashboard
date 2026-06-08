@@ -480,31 +480,86 @@
   }
   function asstAnswer(q) {
     const t = q.toLowerCase().trim();
-    const has = (...ws) => ws.some((w) => t.includes(w));
+    const words = t.replace(/[^\w\s]/g, " ").split(/\s+/).filter(Boolean);
+    const has = (...ws) => ws.some((w) => t.includes(w));            // substring
+    const hasW = (...ws) => ws.some((w) => words.includes(w));        // whole word
     const P = V.priority, top = P[0], win = windowLabel();
     const highN = P.filter((r) => r.pri === "High").length, A = V.alerts;
+
+    // 1) specific intersection
     const sid = asstFindSignal(t);
     if (sid) return asstSigCard(P.find((r) => r.id === sid));
-    if (has("help", "what can you", "what do you", "capab")) return `<p>I read the dashboard's live numbers for the current filters. Ask me about the worst signal, alerts, a specific intersection (e.g. "why SIG-1003"), or a metric. Try a chip below.</p>`;
-    if (t === "" || has("happening", "summary", "overview", "today", "status", "going on", "brief")) {
+
+    // 2) capabilities
+    if (has("what can you", "what do you do", "how can you help", "capab", "your job", "who are you")) {
+      return `<p>I'm a built-in helper for this dashboard. I can explain <b>what it is</b> and how it works, define the <b>metrics</b> (split failures, arrivals-on-red, pedestrian delay), explain <b>how alerts are detected</b> and how the <b>priority score</b> works, and answer from the <b>live data</b>: the worst signal, current alerts, or any intersection (try "why SIG-1003"). What would you like?</p>`;
+    }
+
+    // 3) project / "what is this"
+    if (has("what is this", "what's this", "what is it", "what am i looking", "what does this", "about this", "what is the dashboard", "explain this", "purpose", "what is signal performance") || (hasW("about") && words.length <= 3)) {
+      return `<p>This is a <b>traffic-signal performance dashboard</b> for a DOT operations team. It turns raw signal-controller data into one answer: which signals are misbehaving and which to retime first. Three tabs, <b>Performance</b> (what each signal is doing), <b>Priority</b> (a ranked retiming queue), and <b>Alerts</b> (abnormal behavior). It's showing sample data for ${SIG.length} intersections right now. Ask me "how does it work" or "what is ATSPM" for more.</p>`;
+    }
+    if (has("atspm", "automated traffic")) {
+      return `<p><b>ATSPM</b> = Automated Traffic Signal Performance Measures: using high-resolution controller data (volume, arrivals-on-red, split failures, pedestrian delay) to manage signals <i>proactively</i> instead of waiting for complaints. This dashboard mirrors that approach, reactive to proactive.</p>`;
+    }
+    if (has("how does it work", "how does this work", "how is this built", "how was this", "tech stack", "technology", "built with", "how do you work", "under the hood", "framework")) {
+      return `<p>It's a static web app, hand-rolled SVG charts, no chart library, that computes everything <b>live in your browser</b> from a raw dataset, so the filters genuinely re-score the data. Behind it is a <b>Python pipeline</b> (pandas) that does the cleaning, the composite priority scoring, and the anomaly detection; the dashboard uses the same rules. No backend required.</p>`;
+    }
+    if (has("real data", "where does the data", "data come from", "data source", "fake data", "is this real", "synthetic", "sample data")) {
+      return `<p>The numbers are produced by a <b>real analysis pipeline</b>, but the underlying signal data is <b>synthetic and schema-faithful</b> to UDOT Open ATSPM exports. Drop in real UDOT CSVs (or, in production, live SCATS / RITIS feeds) and the same scoring and alerting run unchanged.</p>`;
+    }
+    if (has("how do i use", "how to use", "navigate", "what are the tabs", "tabs", "get started", "how do i read")) {
+      return `<p>Three tabs: <b>Performance</b> (hourly arrivals-on-red + weekday/weekend patterns), <b>Priority</b> (the ranked retiming queue + a split-failure heatmap), and <b>Alerts</b> (anomalies vs each signal's baseline). Use the left sidebar to filter by signal, date window, day of week, and the anomaly threshold, everything updates live, including me.</p>`;
+    }
+
+    // 4) summary / status
+    if (t === "" || has("happening", "summary", "overview", "today", "status", "going on", "brief", "tell me")) {
       const f = asstFault();
       return `<p>Over <b>${win}</b>, <b>${esc(top.name)}</b> (${top.id}) is the top retiming candidate, score <span class="mono">${top.score.toFixed(1)}</span> (${top.pri}). ${highN} high-priority signal${highN !== 1 ? "s" : ""}, ${A.length} alert${A.length !== 1 ? "s" : ""} at σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span>${f ? `, including a likely detector fault at <b>${f.id}</b>` : ""}.</p>`;
     }
-    if (has("worst", "retime", "first", "top ", "priority", "attention", "fix", "biggest")) return asstSigCard(top, `It tops the queue of ${P.length} signals.`);
-    if (has("alert", "anomal", "fault", "detector", "broken", "spike", "wrong")) {
+
+    // 5) worst / retime first
+    if (has("worst", "retime", "first", "biggest problem", "most attention", "what should i fix", "priority signal")) return asstSigCard(top, `It tops the queue of ${P.length} signals.`);
+
+    // 6) how alerts/anomalies are detected (explanation) — before the alert listing
+    if (has("how are alert", "how do alert", "how are anomal", "how do you detect", "what is an alert", "what is a anomaly", "what is an anomaly", "how alerts work", "baseline", "z-score", "z score", "how do you flag")) {
+      return `<p>Each signal gets its own <b>baseline</b> per (weekday/weekend, hour). The recent window is z-scored against it, anything past the <b>sigma threshold</b> (the sidebar slider, currently <span class="mono">${state.sigma.toFixed(1)}</span>) is flagged. The baseline is built from history only, so an anomaly can't hide inside its own baseline.</p>`;
+    }
+    if (has("detector fault", "detector")) {
+      const f = asstFault();
+      return `<p>A <b>detector fault</b> is when a signal's vehicle detector stops reporting, so volume collapses toward zero against its normal pattern (a large negative sigma).${f ? ` Here <b>${f.id}</b> shows one: ${f.line}` : ""} You want to catch these before they skew the timing.</p>`;
+    }
+
+    // 7) alert listing
+    if (has("alert", "anomal", "broken", "spike", "wrong", "issues", "problems")) {
       if (!A.length) return `<p>No alerts above σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span> in this window. Lower the threshold in the sidebar to surface more.</p>`;
-      const li = A.slice(0, 5).map((a) => `<li><b>${a.id}</b> ${a.line} <span style="color:var(--mute)">· ${FMT.DOW[a.when.getDay()]} ${FMT.MON[a.when.getMonth()]} ${a.when.getDate()}</span></li>`).join("");
+      const li = A.slice(0, 6).map((a) => `<li><b>${a.id}</b> ${a.line} <span style="color:var(--mute)">· ${FMT.DOW[a.when.getDay()]} ${FMT.MON[a.when.getMonth()]} ${a.when.getDate()}</span></li>`).join("");
       return `<p>${A.length} alert${A.length !== 1 ? "s" : ""} at σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span>:</p><ul class="asst-list">${li}</ul>`;
     }
-    if (has("split fail", "split-fail", "split")) return `<p>Split failures are phases that ran out of green, the strongest oversaturation signal (55% of the score). <b>${esc(top.name)}</b> leads with <span class="mono">${top.pmsf}</span> PM-peak failures over ${win}.</p>`;
-    if (has("arrivals", "on red", "aor", "progression")) { const k = V.kpis.find((x) => x.label.includes("Arrivals")); return `<p>Arrivals-on-red is the share of vehicles hitting a red, high under load means poor progression (30% of the score). Network average is <span class="mono">${k.value}%</span> (${k.delta}).</p>`; }
-    if (has("volume", "vph", "vehicles", "traffic")) { const k = V.kpis[0]; return `<p>Total volume over ${win} is <span class="mono">${k.value} ${k.unit}</span> (${k.delta}).</p>`; }
-    if (has("ped", "pedestrian", "crossing", "walk")) return `<p>Pedestrian delay is the average wait after a button press (15% of the score). <b>${esc(top.name)}</b> averages <span class="mono">${top.ped.toFixed(1)}s</span>.</p>`;
-    if (has("score", "composite", "weight", "rank", "calculat")) return `<p>Composite score = 55% PM-peak split failures + 30% arrivals-on-red + 15% pedestrian delay, each min-max normalized across the ${P.length} signals, scaled 0–100. ≥70 = High, ≥40 = Medium.</p>`;
-    if (has("filter", "window", "sigma", "threshold", "days", "date range")) return `<p>Current view: <b>${state.win}-day</b> window (${win}), σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span>, charting ${state.active.length} signal${state.active.length !== 1 ? "s" : ""}. Change these in the sidebar and my answers update live.</p>`;
-    if (has("how many", "number of", "count")) return `<p>${SIG.length} signals total; the queue ranks all ${P.length}. ${highN} are High priority right now.</p>`;
-    if (has("hi", "hello", "hey")) return `<p>Hi, I'm the dashboard helper. Ask me what to retime first, about alerts, or about any intersection.</p>`;
-    return `<p>I can answer from the live data: the worst signal, alerts, a specific intersection (e.g. "why SIG-1003"), or a metric (split failures, arrivals-on-red, volume, pedestrian delay). Try a chip below.</p>`;
+
+    // 8) metrics
+    if (has("split fail", "split-fail") || hasW("split", "sf")) return `<p><b>Split failures</b> are phases that ran out of green during a cycle, the strongest sign of oversaturation (55% of the score). <b>${esc(top.name)}</b> leads with <span class="mono">${top.pmsf}</span> PM-peak failures over ${win}.</p>`;
+    if (has("arrivals", "on red", "progression") || hasW("aor")) { const k = V.kpis.find((x) => x.label.includes("Arrivals")); return `<p><b>Arrivals-on-red</b> is the share of vehicles hitting a red; high under load means poor progression (30% of the score). Network average is <span class="mono">${k.value}%</span> (${k.delta}).</p>`; }
+    if (hasW("volume", "vph", "vehicles", "traffic")) { const k = V.kpis[0]; return `<p><b>Total volume</b> over ${win} is <span class="mono">${k.value} ${k.unit}</span> (${k.delta}).</p>`; }
+    if (has("pedestrian", "ped delay") || hasW("ped", "walk", "crossing")) return `<p><b>Pedestrian delay</b> is the average wait after a button press (15% of the score). <b>${esc(top.name)}</b> averages <span class="mono">${top.ped.toFixed(1)}s</span>.</p>`;
+
+    // 9) score / priority queue
+    if (has("score", "composite", "weight", "ranked", "ranking", "how is rank", "retiming queue", "priority queue")) return `<p>The <b>composite score</b> = 55% PM-peak split failures + 30% arrivals-on-red + 15% pedestrian delay, each min-max normalized across the ${P.length} signals and scaled 0–100. ≥70 = High, ≥40 = Medium. The Priority tab ranks all ${P.length} signals so you know what to retime first.</p>`;
+
+    // 10) filters / features
+    if (has("filter", "window", "sigma", "threshold", "date range") || hasW("days")) return `<p>Current view: <b>${state.win}-day</b> window (${win}), σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span>, charting ${state.active.length} signal${state.active.length !== 1 ? "s" : ""}. Change these in the sidebar and every number, and my answers, update live.</p>`;
+    if (has("dark mode", "light mode", "theme", "dark theme")) return `<p>Use the <b>sun/moon button</b> in the top bar to switch light and dark. It follows your system setting by default and remembers your choice.</p>`;
+    if (has("mobile", "phone", "responsive")) return `<p>Yes, it's responsive, the sidebar and panels stack on smaller screens so it works on a phone.</p>`;
+    if (has("who made", "who built", "who created", "author", "your creator")) return `<p>It's a <b>portfolio project by Shafay</b>, built to demonstrate proactive, ATSPM-style signal management, raw data to a ranked list of what to fix.</p>`;
+    if (has("how many", "number of signal") || hasW("count")) return `<p>${SIG.length} signals total; the queue ranks all ${P.length}. ${highN} ${highN === 1 ? "is" : "are"} High priority right now.</p>`;
+
+    // 11) greeting (whole word, so "this"/"high" don't trigger it)
+    if (hasW("hi", "hello", "hey", "yo", "hiya", "sup") || has("good morning", "good afternoon")) {
+      return `<p>Hi, I'm the dashboard helper. I can explain what this is and how it works, define any metric, or answer from the live data, what to retime first, the alerts, or any intersection. Try a chip below.</p>`;
+    }
+
+    // 12) fallback
+    return `<p>I'm not sure I caught that. I can help with:</p><ul class="asst-list"><li><b>What this is</b> and how it's built</li><li>The <b>metrics</b> (split failures, arrivals-on-red, pedestrian delay, volume)</li><li><b>How alerts are detected</b> and the <b>priority score</b></li><li>Live data: the <b>worst signal</b>, current <b>alerts</b>, or any <b>intersection</b> ("why SIG-1003")</li></ul>`;
   }
   function wireAssistant() {
     const panel = $("#asst"), btn = $("#asstBtn"), body = $("#asstBody"), chips = $("#asstChips"), form = $("#asstForm"), input = $("#asstInput");
@@ -512,7 +567,7 @@
     let greeted = false;
     const add = (html, who) => { const m = document.createElement("div"); m.className = "asst-msg " + who; if (who === "user") m.textContent = html; else m.innerHTML = html; body.appendChild(m); body.scrollTop = body.scrollHeight; };
     const ask = (q) => { add(q, "user"); setTimeout(() => add(asstAnswer(q), "bot"), 180); };
-    const SUGG = ["What's happening?", "What do I retime first?", "Any alerts?", "Explain the score"];
+    const SUGG = ["What is this?", "What's happening?", "What do I retime first?", "Any alerts?", "How does it work?"];
     chips.innerHTML = ""; SUGG.forEach((c) => { const b = document.createElement("button"); b.className = "asst-chip"; b.textContent = c; b.addEventListener("click", () => ask(c)); chips.appendChild(b); });
     try { if (!localStorage.getItem("sp_asst_seen")) btn.classList.add("nudge"); } catch (e) {}
     const open = () => { panel.classList.add("is-on"); panel.setAttribute("aria-hidden", "false"); btn.setAttribute("aria-expanded", "true"); btn.classList.remove("nudge"); try { localStorage.setItem("sp_asst_seen", "1"); } catch (e) {} if (!greeted) { greeted = true; add(asstAnswer(""), "bot"); } setTimeout(() => input.focus(), 80); };
