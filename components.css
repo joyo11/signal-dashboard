@@ -35,10 +35,32 @@
   border: 1px solid var(--line); border-radius: 7px; padding: 5px 10px;
   display: flex; align-items: center; gap: 7px;
 }
+.topbar-userwrap { position: relative; }
 .topbar-user {
   width: 30px; height: 30px; border-radius: 50%; background: var(--surface-alt);
-  border: 1px solid var(--line); display: grid; place-items: center;
-  font-size: 12px; font-weight: 600; color: var(--mute); cursor: pointer;
+  border: 1px solid var(--line); display: grid; place-items: center; padding: 0;
+  font-family: var(--body); font-size: 12px; font-weight: 600; color: var(--mute); cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease-in), background var(--t-fast) var(--ease-in);
+}
+.topbar-user:hover { border-color: var(--line-hi); background: var(--bg); }
+.user-menu {
+  position: absolute; top: calc(100% + 8px); right: 0; width: 200px; z-index: 60;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
+  box-shadow: 0 12px 30px rgba(20,21,15,0.10); padding: 6px;
+}
+.user-menu[hidden] { display: none; }
+.user-menu-id { padding: 8px 10px 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.user-menu-name { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.user-menu-role { font-size: 12px; color: var(--mute); margin-top: 2px; }
+.user-menu-item {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  background: none; border: none; border-radius: var(--r-sm); padding: 8px 10px;
+  font-family: var(--body); font-size: 13px; color: var(--mute); text-align: left;
+}
+.user-menu-item:disabled { cursor: not-allowed; }
+.demo-tag {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--mute-2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
 }
 
 /* ---------- Sidebar ---------- */
@@ -312,3 +334,31 @@ table.ptable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .stagger.preload > * { opacity: 0; transform: translateY(8px); }
 @keyframes stagIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .stagger.preload > * { opacity: 1; transform: none; } }
+
+/* ---------- Responsive ----------
+   Desktop-first per the brief, but stack instead of overflowing on
+   narrow viewports so the dashboard stays usable on tablet / phone. */
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar {
+    position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line);
+    flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 12px; padding: 16px;
+  }
+  .sidebar-head { flex-basis: 100%; }
+  .filter-card { flex: 1 1 220px; }
+  .sample-tag { flex: 1 1 100%; margin-top: 4px; }
+  .main-inner { padding: 20px 18px 64px; }
+  .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  .two-col { grid-template-columns: 1fr; }
+  .ptable-wrap { overflow-x: auto; }
+  table.ptable { min-width: 640px; }
+}
+@media (max-width: 560px) {
+  .topbar { padding: 0 14px; gap: 10px; }
+  .topbar-date { display: none; }
+  .kpi-strip { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .kpi-val { font-size: 24px; }
+  .tabs { gap: 18px; overflow-x: auto; }
+  .drawer { width: 100%; }
+  .main-inner { padding: 16px 14px 56px; }
+}

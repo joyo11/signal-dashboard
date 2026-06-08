@@ -43,14 +43,23 @@
       <span class="mono" style="font-size:11px;color:var(--mute-2)">${s >= 90 ? "High" : "Low"}</span>
     </div>`).join("");
 
-  // axis demo — tiny line chart with hairline rules
+  // axis demo — tiny line chart with hairline rules (3-day slice from raw)
   const demo = $("#axisDemo");
   if (window.Charts && window.DATA) {
-    const sub = { "SIG-1003": DATA.timeseries["SIG-1003"].slice(0, 72), "SIG-1001": DATA.timeseries["SIG-1001"].slice(0, 72) };
-    // reuse SmallMultiple-like by calling LineChart with a 3-day slice
-    const slice = {};
-    DATA.featured.forEach((s) => slice[s.id] = DATA.timeseries[s.id].slice(0, 72));
-    Charts.LineChart(demo, { series: slice, dayList: DATA.dayList.slice(0, 3), activeIds: ["SIG-1003", "SIG-1001"], height: 180, yLabel: "AoR (%)" });
+    const ids = ["SIG-1003", "SIG-1001"];
+    const colors = { "SIG-1003": "#C0392B", "SIG-1001": "#2D5F8A" };
+    const sidx = {}; DATA.signals.forEach((s, i) => (sidx[s.id] = i));
+    const map = {}; DATA.raw.forEach((r) => (map[r.s + "_" + r.d + "_" + r.h] = r));
+    const series = {}; ids.forEach((id) => (series[id] = []));
+    const tList = [], dayTicks = [];
+    for (let d = 0; d < 3; d++) {
+      for (let h = 0; h < 24; h++) {
+        const dt = new Date(DATA.dayList[d].getTime()); dt.setHours(h); tList.push(dt);
+        if (h === 0) dayTicks.push({ pos: tList.length - 1, label: FMT.MON[DATA.dayList[d].getMonth()] + " " + DATA.dayList[d].getDate() });
+        ids.forEach((id) => { const r = map[sidx[id] + "_" + d + "_" + h]; series[id].push({ v: r ? r.aor : 0, anomaly: false }); });
+      }
+    }
+    Charts.LineChart(demo, { series, tList, dayTicks, colors, activeIds: ids, emphasisId: "SIG-1003", height: 180, yLabel: "AoR (%)" });
   }
 
   // inventory
@@ -66,10 +75,10 @@
     ["SmallMultiplesPair", "Weekday | weekend, shared y"],
     ["Heatmap", "Signals × hours, split failures"],
     ["HorizontalBars", "Alerts per signal"],
-    ["ScatterLane", "Severity over time, 4 lanes"],
+    ["ScatterLane", "Severity over time, by signal"],
     ["PriorityTable", "Dense ranked queue"],
     ["PriorityScoreCell", "Bar behind tabular number"],
-    ["PriorityPill", "High / Low indicator"],
+    ["PriorityPill", "High / Medium / Low indicator"],
     ["AlertFeed", "Date-grouped card list"],
     ["AlertCard", "One abnormal behavior"],
     ["AlertSeverityBar", "Left edge, warn / alert"],
