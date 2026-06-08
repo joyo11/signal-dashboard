@@ -43,6 +43,21 @@
   transition: border-color var(--t-fast) var(--ease-in), background var(--t-fast) var(--ease-in);
 }
 .topbar-user:hover { border-color: var(--line-hi); background: var(--bg); }
+/* theme toggle — JS injects this between .topbar-date and .topbar-userwrap.
+   Child icons MUST use classes icon-sun / icon-moon (contract). */
+.topbar-theme {
+  width: 30px; height: 30px; border-radius: 8px; background: var(--surface-alt);
+  border: 1px solid var(--line); display: grid; place-items: center; padding: 0;
+  color: var(--mute); cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease-in), background var(--t-fast) var(--ease-in), color var(--t-fast) var(--ease-in);
+}
+.topbar-theme:hover { border-color: var(--line-hi); background: var(--bg); color: var(--ink); }
+.topbar-theme svg { display: block; pointer-events: none; }
+.topbar-theme .icon-moon { display: none; }
+:root[data-theme="dark"] .topbar-theme .icon-sun { display: none; }
+:root[data-theme="dark"] .topbar-theme .icon-moon { display: block; }
+/* dark-only inversion fix for the segmented active state (background:var(--ink)) */
+:root[data-theme="dark"] .seg button.is-on { color: var(--bg); }
 .user-menu {
   position: absolute; top: calc(100% + 8px); right: 0; width: 200px; z-index: 60;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
@@ -153,31 +168,32 @@ input[type="range"].sigma::-webkit-slider-thumb {
 .sample-tag .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: 0 0 auto; }
 
 /* ---------- Main ---------- */
-.main { padding: 0; }
+.main { padding: 0; min-width: 0; }
 .main-inner { max-width: var(--main-max); margin: 0 auto; padding: 26px 36px 80px; }
 
 /* ---------- Insight banner ---------- */
 .insight {
   display: flex; align-items: center; gap: 14px;
   background: var(--warn-soft);
-  border: 1px solid #F0E2BE;
+  border: 1px solid var(--line-hi);
   border-left: 3px solid var(--warn);
   border-radius: var(--r-card);
   padding: 0 18px; min-height: 56px;
   margin-bottom: 22px;
 }
 .insight-ico { color: var(--warn); flex: 0 0 auto; display: grid; place-items: center; }
-.insight-text { font-size: 14.5px; line-height: 1.5; color: #4A3A15; }
-.insight-text b { font-weight: 600; color: #3A2D0F; }
-.insight-text .mono { color: #5A4718; }
-.insight-lead { font-family: var(--display); font-weight: 500; margin-right: 4px; color: #3A2D0F; }
+.insight-text { font-size: 14.5px; line-height: 1.5; color: var(--ink); }
+.insight-text b { font-weight: 600; color: var(--ink); }
+.insight-text .mono { color: var(--mute); }
+.insight-lead { font-family: var(--display); font-weight: 500; margin-right: 4px; color: var(--ink); }
 
 /* ---------- KPI strip ---------- */
 .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 26px; }
 .kpi {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
-  padding: 15px 16px 14px;
+  padding: 15px 16px 14px; min-width: 0;
 }
+.kpi .caption { overflow-wrap: anywhere; }
 .kpi .caption { display: block; margin-bottom: 10px; }
 .kpi-val { font-family: var(--mono); font-weight: 500; font-size: 30px; letter-spacing: -0.01em; color: var(--ink); line-height: 1; }
 .kpi-val .unit { font-size: 15px; color: var(--mute); margin-left: 4px; font-weight: 400; }
@@ -205,12 +221,13 @@ input[type="range"].sigma::-webkit-slider-thumb {
 
 /* ---------- Section + panel ---------- */
 .section { margin-bottom: 28px; }
-.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 18px 20px 16px; transition: border-color var(--t-med) var(--ease-in); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 18px 20px 16px; transition: border-color var(--t-med) var(--ease-in); min-width: 0; }
 .panel:hover { border-color: var(--line-hi); }
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
 .panel-title { font-family: var(--display); font-size: 16px; font-weight: 500; letter-spacing: -0.02em; }
 .panel-sub { font-size: 12.5px; color: var(--mute); }
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; min-width: 0; }
+.two-col > * { min-width: 0; }
 
 /* chip toggle row above line chart */
 .legend-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
@@ -221,6 +238,9 @@ input[type="range"].sigma::-webkit-slider-thumb {
 .axis-cap { font-family: var(--body); font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; fill: var(--mute); }
 .heat-lab { font-family: var(--mono); font-size: 11px; fill: var(--ink); }
 .heat-sub { font-family: var(--body); font-size: 10.5px; fill: var(--mute-2); }
+/* dark: drop empty-cell stroke so empty cells read as empty, not gridlines.
+   Backstop only — charts.js sets stroke-opacity inline (authoritative). */
+:root[data-theme="dark"] .heat-cell { stroke-opacity: 0.3; }
 
 /* anomaly pulse — ONE pulse type */
 @keyframes anomPulse { 0% { transform: scale(1); opacity: 0; } 30% { opacity: 0.6; } 100% { transform: scale(2.6); opacity: 0; } }
@@ -262,9 +282,9 @@ table.ptable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .pri-pill.low { color: var(--mute); }
 .pri-pill.low .pdot { background: transparent; border: 1.5px solid var(--line-hi); }
 .ptable tbody tr.is-high { background: linear-gradient(90deg, var(--alert-soft), transparent 60%); }
-.ptable tbody tr.is-high:hover { background: linear-gradient(90deg, #F8DDD8, transparent 60%); }
+.ptable tbody tr.is-high:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--alert-soft) 70%, var(--alert) 30%), transparent 60%); }
 .ptable tbody tr.is-medium { background: linear-gradient(90deg, var(--warn-soft), transparent 60%); }
-.ptable tbody tr.is-medium:hover { background: linear-gradient(90deg, #FBEFD2, transparent 60%); }
+.ptable tbody tr.is-medium:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--warn-soft) 70%, var(--warn) 30%), transparent 60%); }
 
 /* ---------- Alerts ---------- */
 .alert-group-head { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mute); margin: 22px 0 10px; }
@@ -361,4 +381,8 @@ table.ptable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .tabs { gap: 18px; overflow-x: auto; }
   .drawer { width: 100%; }
   .main-inner { padding: 16px 14px 56px; }
+  .sidebar { flex-direction: column; }
+  .filter-card { flex: 1 1 100%; width: 100%; }
+  .seg button { font-size: 12px; }
+  input[type="range"].sigma { width: 100%; }
 }

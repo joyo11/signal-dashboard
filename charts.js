@@ -15,6 +15,14 @@ function el(tag, attrs = {}, parent) {
 }
 function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
+// resolve a CSS custom property to an [r,g,b] triple at call time (theme-adaptive)
+function cssRGB(name) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  // accept #rgb, #rrggbb, or rgb(...)
+  if (v[0] === "#") { let h = v.slice(1); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  const m = v.match(/(\d+)[,\s]+(\d+)[,\s]+(\d+)/); return m ? [+m[1], +m[2], +m[3]] : [128, 128, 128];
+}
+
 // shared tooltip
 let _tip;
 function tip() {
@@ -174,11 +182,13 @@ function Heatmap(mount, opts) {
     if (v <= 0) return "transparent";
     const t = max ? v / max : 0;
     const lerp = (a, b, k) => a.map((x, i) => Math.round(x + (b[i] - x) * k));
-    const paper = [250, 248, 244], warn = [201, 122, 30], alert = [192, 57, 43];
+    // low anchor = --surface-alt (one step lifted) so low-but-nonzero cells stay visible in dark
+    const paper = cssRGB("--surface-alt"), warn = cssRGB("--warn"), alert = cssRGB("--alert");
     const c = t < 0.5 ? lerp(paper, warn, t / 0.5) : lerp(warn, alert, (t - 0.5) / 0.5);
     return `rgb(${c[0]},${c[1]},${c[2]})`;
   }
 
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
   rows.forEach((row, ri) => {
     const y = padT + ri * (ch + cellGap);
     el("text", { x: 6, y: y + ch / 2 + 4, "text-anchor": "start", class: "heat-lab" }, svg).textContent = row.id;
@@ -187,7 +197,7 @@ function Heatmap(mount, opts) {
     row.cells.forEach((v, h) => {
       const x = labelW + h * (cw + cellGap);
       const rect = el("rect", { x, y, width: cw, height: ch, rx: 2, fill: color(v),
-        stroke: v > 0 ? "rgba(0,0,0,0.04)" : "var(--line)", "stroke-opacity": v > 0 ? 1 : 0.5, class: "heat-cell" }, svg);
+        stroke: v > 0 ? (dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)") : "var(--line)", "stroke-opacity": v > 0 ? 1 : (dark ? 0.3 : 0.5), class: "heat-cell" }, svg);
       rect.style.transition = "filter 80ms var(--ease-in)";
       const show = (e) => showTip(`${row.id} · ${String(h).padStart(2, "0")}:00<br><b>${v}</b> split failures`, e.clientX, e.clientY);
       rect.addEventListener("mouseenter", (e) => { rect.style.filter = "brightness(0.9)"; show(e); });

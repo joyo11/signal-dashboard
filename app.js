@@ -9,6 +9,15 @@
   const C = window.Charts;
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  // ---- theme-adaptive color resolution (read CSS tokens at call time) ----
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  function cssRGB(name) {
+    const v = cssVar(name);
+    if (v[0] === "#") { let h = v.slice(1); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+    const m = v.match(/(\d+)[,\s]+(\d+)[,\s]+(\d+)/); return m ? [+m[1], +m[2], +m[3]] : [128, 128, 128];
+  }
+  const seriesToken = (id) => (id === "SIG-1001" ? "--s-1001" : id === "SIG-1002" ? "--s-1002" : id === "SIG-1003" ? "--s-1003" : id === "SIG-1004" ? "--s-1004" : "--s-other");
+  const seriesColor = (id) => cssVar(seriesToken(id));
   const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -101,7 +110,7 @@
     idxs.forEach((d) => { for (let h = 0; h < 24; h++) { const pos = positions.length; positions.push({ d, h }); const dt = new Date(dayMeta[d].date.getTime()); dt.setHours(h); tList.push(dt); if (h === 0) dayTicks.push({ pos, label: FMT.MON[dayMeta[d].date.getMonth()] + " " + dayMeta[d].date.getDate() }); } });
     const series = {}, colors = {};
     D.featured.forEach((f) => {
-      const i = sigById[f.id].idx; colors[f.id] = f.hex;
+      const i = sigById[f.id].idx; colors[f.id] = seriesColor(f.id);
       series[f.id] = positions.map((p) => { const r = rowMap[i + "_" + p.d + "_" + p.h]; return r ? { v: r.aor, anomaly: isAlert(r) } : { v: 0, anomaly: false }; });
     });
     return { series, tList, dayTicks, colors };
@@ -145,7 +154,7 @@
       if (dom !== "volume" && peak.vz <= -state.sigma) subs.push(`Volume ${Math.round(peak.vol)} vph (${sgn(peak.vz)}σ)`);
       const dt = new Date(dayMeta[peak.d].date.getTime()); dt.setHours(peak.h);
       const s = SIG[peak.s];
-      eps.push({ id: s.id, name: s.name, when: dt, sev: +sev.toFixed(1), metric: dom, line, sub: subs.length ? subs.join(". ") : "Excursion against the time-of-week baseline.", hex: s.hex });
+      eps.push({ id: s.id, name: s.name, when: dt, sev: +sev.toFixed(1), metric: dom, line, sub: subs.length ? subs.join(". ") : "Excursion against the time-of-week baseline.", hex: seriesColor(s.id) });
     });
     eps.sort((a, b) => b.when - a.when);
     return eps;
@@ -207,8 +216,8 @@
     D.featured.forEach((s) => {
       const on = state.active.includes(s.id);
       const chip = document.createElement("button");
-      chip.className = "chip " + (on ? "is-on" : "is-off"); chip.style.color = on ? s.hex : "";
-      chip.innerHTML = `<span class="dot" style="background:${s.hex}"></span>${s.id.replace("SIG-", "")}`;
+      chip.className = "chip " + (on ? "is-on" : "is-off"); chip.style.color = on ? seriesColor(s.id) : "";
+      chip.innerHTML = `<span class="dot" style="background:${seriesColor(s.id)}"></span>${s.id.replace("SIG-", "")}`;
       chip.title = s.name;
       chip.addEventListener("click", () => { toggleActive(s.id); });
       wrap.appendChild(chip);
@@ -219,8 +228,8 @@
     D.featured.forEach((s) => {
       const on = state.active.includes(s.id);
       const chip = document.createElement("button");
-      chip.className = "chip " + (on ? "is-on" : "is-off"); chip.style.color = on ? s.hex : "";
-      chip.innerHTML = `<span class="dot" style="background:${s.hex}"></span>${s.id} <span style="color:var(--mute-2);margin-left:2px">${esc(s.name.replace("State St & ", ""))}</span>`;
+      chip.className = "chip " + (on ? "is-on" : "is-off"); chip.style.color = on ? seriesColor(s.id) : "";
+      chip.innerHTML = `<span class="dot" style="background:${seriesColor(s.id)}"></span>${s.id} <span style="color:var(--mute-2);margin-left:2px">${esc(s.name.replace("State St & ", ""))}</span>`;
       chip.addEventListener("click", () => { toggleActive(s.id); });
       wrap.appendChild(chip);
     });
@@ -309,7 +318,7 @@
 
   function scoreColor(score) {
     const t = Math.min(1, score / 100), lerp = (a, b, k) => a.map((x, i) => Math.round(x + (b[i] - x) * k));
-    const accent = [31, 110, 67], warn = [201, 122, 30], alert = [192, 57, 43];
+    const accent = cssRGB("--accent"), warn = cssRGB("--warn"), alert = cssRGB("--alert");
     const c = t < 0.5 ? lerp(accent, warn, t / 0.5) : lerp(warn, alert, (t - 0.5) / 0.5);
     return `rgb(${c[0]},${c[1]},${c[2]})`;
   }
@@ -341,17 +350,17 @@
     });
     const hm = computeHeatmap(V.cur, state.active);
     C.Heatmap($("#heatmap"), hm);
-    $("#heatScale").innerHTML = `0 <span style="display:inline-block;width:54px;height:9px;border-radius:3px;margin:0 6px;vertical-align:middle;background:linear-gradient(90deg,#FAF8F4,#C97A1E,#C0392B);border:1px solid var(--line)"></span> ${hm.max}`;
+    $("#heatScale").innerHTML = `0 <span style="display:inline-block;width:54px;height:9px;border-radius:3px;margin:0 6px;vertical-align:middle;background:linear-gradient(90deg,var(--surface-alt),var(--warn),var(--alert));border:1px solid var(--line)"></span> ${hm.max}`;
   }
 
   function renderAlerts() {
     const eps = V.alerts;
     // alerts-per (all signals with alerts) + scatter lanes
     const cnt = {}; eps.forEach((e) => (cnt[e.id] = (cnt[e.id] || 0) + 1));
-    const perData = Object.keys(cnt).map((id) => ({ id, n: cnt[id], hex: sigById[id].hex })).sort((a, b) => b.n - a.n);
+    const perData = Object.keys(cnt).map((id) => ({ id, n: cnt[id], hex: seriesColor(id) })).sort((a, b) => b.n - a.n);
     C.HorizontalBars($("#alertBars"), { data: perData, height: 200 });
 
-    const lanes = perData.map((d) => ({ id: d.id, hex: sigById[d.id].hex }));
+    const lanes = perData.map((d) => ({ id: d.id, hex: seriesColor(d.id) }));
     const laneIdx = {}; lanes.forEach((l, i) => (laneIdx[l.id] = i));
     const points = eps.map((e) => ({ lane: laneIdx[e.id], t: e.when, sev: e.sev, hex: e.hex, id: e.id }));
     const idxs = winIndices().filter(dowOk);
@@ -401,7 +410,7 @@
 
   /* ================= drawer ================= */
   function openDrawer(r) {
-    const sig = sigById[r.id], hex = sig ? sig.hex : "#6E6B62";
+    const sig = sigById[r.id], hex = sig ? seriesColor(sig.id) : cssVar("--mute");
     $("#drawerDot").style.background = hex;
     $("#drawerId").textContent = `${r.id} · rank ${r.rank}`;
     $("#drawerTitle").textContent = r.name;
@@ -436,6 +445,22 @@
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
   }
 
+  /* ================= theme toggle ================= */
+  function wireThemeToggle() {
+    const btn = $("#themeBtn"); if (!btn) return;
+    const root = document.documentElement;
+    const sync = () => { const dark = root.getAttribute("data-theme") === "dark"; btn.setAttribute("aria-pressed", String(dark)); };
+    sync();
+    btn.addEventListener("click", () => {
+      const dark = root.getAttribute("data-theme") === "dark";
+      if (dark) root.removeAttribute("data-theme"); else root.setAttribute("data-theme", "dark");
+      try { localStorage.setItem("sp_theme", dark ? "light" : "dark"); } catch (e) {}
+      sync();
+      // SVG fills were set to literal resolved colors at render; re-render so charts re-read tokens.
+      renderSigChips(); renderLegend(); refresh();
+    });
+  }
+
   /* ================= refresh / load / init ================= */
   function refresh(animateKpi) {
     V.cur = rowsFor(winIndices());
@@ -460,7 +485,7 @@
     const sc = $("#sampleCount"); if (sc) sc.textContent = `${SIG.length} signals`;
 
     renderSigChips(); renderDow(); renderLegend();
-    wireFilters(); wireTabs(); wireUserMenu(); updateFilterActive();
+    wireFilters(); wireTabs(); wireUserMenu(); wireThemeToggle(); updateFilterActive();
     $$(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === state.tab));
     $$(".tabpanel").forEach((p) => p.classList.toggle("is-on", p.id === "panel-" + state.tab));
     moveUnderline();

@@ -25,6 +25,7 @@
   --s-1002: #1F6E43;  /* accent green */
   --s-1003: #C0392B;  /* alert red — the troublemaker */
   --s-1004: #8E6E2F;  /* warm bronze */
+  --s-other: #8A867C;   /* non-featured series — matches data.js neutral */
 
   /* ---- Type ---- */
   --display: "Fraunces", Georgia, serif;
@@ -48,6 +49,20 @@
   --main-max:  1180px;
   --topbar-h:  56px;
 }
+
+:root[data-theme="dark"]{
+  --bg:#14150F; --surface:#1B1C16; --surface-alt:#232419; --line:#2E2F25; --line-hi:#3D3E31;
+  --ink:#ECEAE0; --mute:#9E9A8C; --mute-2:#7C7869;
+  --accent:#4FB07A; --accent-soft:#1C2C22; --warn:#E0A23C; --warn-soft:#2C2415; --alert:#E5675A; --alert-soft:#2E1B18;
+  --s-1001:#5B93C4; --s-1002:#4FB07A; --s-1003:#E5675A; --s-1004:#C2A055;
+  --s-other:#6B675C;
+}
+
+/* dark-only inversion fixes: components that hardcode color:#fff on background:var(--ink)
+   would render light-on-light once --ink flips, so route their text to var(--bg). */
+:root[data-theme="dark"] .btn--primary { color: var(--bg); }
+:root[data-theme="dark"] .btn--primary:hover { background: var(--mute); }
+:root[data-theme="dark"] .tooltip { color: var(--bg); }
 
 * { box-sizing: border-box; }
 
