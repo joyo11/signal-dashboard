@@ -53,6 +53,12 @@
 }
 .topbar-theme:hover { border-color: var(--line-hi); background: var(--bg); color: var(--ink); }
 .topbar-theme svg { display: block; pointer-events: none; }
+/* one-time nudge dot on the assistant button (until first open) */
+.topbar-theme.nudge { position: relative; }
+.topbar-theme.nudge::after { content: ""; position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); border: 1.5px solid var(--surface); }
+.topbar-theme.nudge::before { content: ""; position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); opacity: 0.5; animation: asstNudge 1.9s var(--ease-in) infinite; }
+@keyframes asstNudge { 0% { transform: scale(1); opacity: 0.5; } 70% { transform: scale(2.6); opacity: 0; } 100% { transform: scale(2.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .topbar-theme.nudge::before { display: none; } }
 .topbar-theme .icon-moon { display: none; }
 :root[data-theme="dark"] .topbar-theme .icon-sun { display: none; }
 :root[data-theme="dark"] .topbar-theme .icon-moon { display: block; }

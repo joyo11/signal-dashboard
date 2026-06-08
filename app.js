@@ -514,7 +514,8 @@
     const ask = (q) => { add(q, "user"); setTimeout(() => add(asstAnswer(q), "bot"), 180); };
     const SUGG = ["What's happening?", "What do I retime first?", "Any alerts?", "Explain the score"];
     chips.innerHTML = ""; SUGG.forEach((c) => { const b = document.createElement("button"); b.className = "asst-chip"; b.textContent = c; b.addEventListener("click", () => ask(c)); chips.appendChild(b); });
-    const open = () => { panel.classList.add("is-on"); panel.setAttribute("aria-hidden", "false"); btn.setAttribute("aria-expanded", "true"); if (!greeted) { greeted = true; add(asstAnswer(""), "bot"); } setTimeout(() => input.focus(), 80); };
+    try { if (!localStorage.getItem("sp_asst_seen")) btn.classList.add("nudge"); } catch (e) {}
+    const open = () => { panel.classList.add("is-on"); panel.setAttribute("aria-hidden", "false"); btn.setAttribute("aria-expanded", "true"); btn.classList.remove("nudge"); try { localStorage.setItem("sp_asst_seen", "1"); } catch (e) {} if (!greeted) { greeted = true; add(asstAnswer(""), "bot"); } setTimeout(() => input.focus(), 80); };
     const close = () => { panel.classList.remove("is-on"); panel.setAttribute("aria-hidden", "true"); btn.setAttribute("aria-expanded", "false"); };
     btn.addEventListener("click", () => (panel.classList.contains("is-on") ? close() : open()));
     $("#asstClose").addEventListener("click", close);
