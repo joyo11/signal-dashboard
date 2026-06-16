@@ -1,621 +1,457 @@
 /* ============================================================
-   Signal Performance Dashboard — App wiring & live compute
-   Everything shown (KPIs, priority ranking, charts, alerts) is
-   computed in the browser from DATA.raw against the active filters,
-   using the same rules as src/analysis.py and src/model.py.
+   Signal Performance — Command Center
+   Implements the Claude Design handoff (navy NOC layout), wired to the
+   REAL pipeline data in data.js (DATA.raw). Everything shown — donut,
+   KPIs, alerts, trend, heatmap, queue, drawer — is computed in-browser
+   from the same rules as src/analysis.py + src/model.py.
    ============================================================ */
 (function () {
-  const D = window.DATA;
-  const C = window.Charts;
-  const $ = (s, r = document) => r.querySelector(s);
-  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-  // ---- theme-adaptive color resolution (read CSS tokens at call time) ----
-  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  function cssRGB(name) {
-    const v = cssVar(name);
-    if (v[0] === "#") { let h = v.slice(1); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
-    const m = v.match(/(\d+)[,\s]+(\d+)[,\s]+(\d+)/); return m ? [+m[1], +m[2], +m[3]] : [128, 128, 128];
-  }
-  const seriesToken = (id) => (id === "SIG-1001" ? "--s-1001" : id === "SIG-1002" ? "--s-1002" : id === "SIG-1003" ? "--s-1003" : id === "SIG-1004" ? "--s-1004" : "--s-other");
-  const seriesColor = (id) => cssVar(seriesToken(id));
-  const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  var D = window.DATA, FMT = window.FMT;
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+  var cssVar = function (n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || "#888"; };
 
-  // ---- precompute lookups ----
-  const SIG = D.signals;
-  SIG.forEach((s, i) => (s.idx = i));
-  const sigById = {}; SIG.forEach((s) => (sigById[s.id] = s));
-  const featuredIds = D.featured.map((s) => s.id);
-  const dayMeta = D.dayList.map((dt) => { const j = dt.getDay(); return { date: dt, jsDay: j, weekend: j === 0 || j === 6 }; });
-  const TODAY = dayMeta[dayMeta.length - 1].date;
-  const rowMap = {}; D.raw.forEach((r) => (rowMap[r.s + "_" + r.d + "_" + r.h] = r));
-  const ND = D.dayList.length;
+  // ---- lookups ----
+  var SIG = D.signals; SIG.forEach(function (s, i) { s.idx = i; });
+  var sigById = {}; SIG.forEach(function (s) { sigById[s.id] = s; });
+  var featuredIds = D.featured.map(function (s) { return s.id; });
+  var dayMeta = D.dayList.map(function (dt) { var j = dt.getDay(); return { date: dt, jsDay: j, weekend: j === 0 || j === 6 }; });
+  var ND = D.dayList.length, WIN = 7;
+  var SIGMA = 2.5;
+  var rowMap = {}; D.raw.forEach(function (r) { rowMap[r.s + "_" + r.d + "_" + r.h] = r; });
+  var winEndDate = dayMeta[ND - 1].date;
 
-  // ---- state ----
-  const state = {
-    active: featuredIds.slice(),
-    win: 7,
-    days: { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1 },
-    sigma: 2.5,
-    tab: "performance",
-  };
-  let V = {}; // current computed view
+  var PRI = { High: "var(--alert)", Med: "var(--amber)", Low: "var(--healthy)" };
+  var PRIBG = { High: "rgba(229,87,62,.13)", Med: "rgba(224,162,60,.13)", Low: "rgba(79,176,122,.13)" };
 
-  /* ================= window / filter helpers ================= */
-  const range = (a, b) => { const o = []; for (let i = a; i <= b; i++) o.push(i); return o; };
-  function winIndices() { return range(ND - state.win, ND - 1); }
-  function priorIndices() { const end = ND - state.win - 1; if (end < 0) return []; return range(Math.max(0, ND - 2 * state.win), end); }
-  function dowOk(d) { return !!state.days[dayMeta[d].jsDay]; }
-  function rowsFor(indices) { const set = new Set(indices.filter(dowOk)); return D.raw.filter((r) => set.has(r.d)); }
-  function isAlert(r) { return r.vz <= -state.sigma || r.az >= state.sigma || r.sz >= state.sigma; }
-  const sgn = (v) => (v > 0 ? "+" : "") + v.toFixed(1);
+  function range(a, b) { var o = []; for (var i = a; i <= b; i++) o.push(i); return o; }
+  function winIdx() { return range(ND - WIN, ND - 1); }
+  function priorIdx() { var e = ND - WIN - 1; return e < 0 ? [] : range(Math.max(0, ND - 2 * WIN), e); }
+  function rowsFor(idxs) { var set = {}; idxs.forEach(function (d) { set[d] = 1; }); return D.raw.filter(function (r) { return set[r.d]; }); }
+  function isAlert(r) { return r.vz <= -SIGMA || r.az >= SIGMA || r.sz >= SIGMA; }
+  function sgn(v) { return (v > 0 ? "+" : "") + v.toFixed(1); }
 
-  /* ================= compute layer ================= */
+  // ---- compute ----
   function computePriority(rows) {
-    const agg = SIG.map(() => ({ sf: 0, aorS: 0, pedS: 0, volS: 0, n: 0 }));
-    rows.forEach((r) => {
-      if (dayMeta[r.d].weekend) return; // weekday only, per analysis.py
-      const a = agg[r.s];
-      a.n++; a.aorS += r.aor; a.pedS += r.ped; a.volS += r.vol;
-      if (D.pmPeak.includes(r.h)) a.sf += r.sf;
+    var agg = SIG.map(function () { return { sf: 0, aorS: 0, pedS: 0, volS: 0, n: 0 }; });
+    rows.forEach(function (r) {
+      if (dayMeta[r.d].weekend) return;
+      var a = agg[r.s]; a.n++; a.aorS += r.aor; a.pedS += r.ped; a.volS += r.vol;
+      if (D.pmPeak.indexOf(r.h) >= 0) a.sf += r.sf;
     });
-    const recs = SIG.map((s, i) => {
-      const a = agg[i], n = a.n || 1;
+    var recs = SIG.map(function (s, i) {
+      var a = agg[i], n = a.n || 1;
       return { id: s.id, name: s.name, pmsf: a.sf, aor: a.n ? a.aorS / n : 0, ped: a.n ? a.pedS / n : 0, vol: a.n ? a.volS / n : 0 };
     });
-    const norm = (key) => { const vals = recs.map((r) => r[key]); const mn = Math.min(...vals), mx = Math.max(...vals), d = mx - mn; return (v) => (d ? (v - mn) / d : 0); };
-    const nsf = norm("pmsf"), naor = norm("aor"), nped = norm("ped");
-    recs.forEach((r) => (r.score = (D.weights.sf * nsf(r.pmsf) + D.weights.aor * naor(r.aor) + D.weights.ped * nped(r.ped)) * 100));
-    recs.sort((a, b) => b.score - a.score);
-    recs.forEach((r, i) => { r.rank = i + 1; r.pri = r.score >= 70 ? "High" : r.score >= 40 ? "Medium" : "Low"; });
+    var norm = function (k) { var v = recs.map(function (r) { return r[k]; }); var mn = Math.min.apply(null, v), mx = Math.max.apply(null, v), d = mx - mn; return function (x) { return d ? (x - mn) / d : 0; }; };
+    var ns = norm("pmsf"), na = norm("aor"), np = norm("ped");
+    recs.forEach(function (r) { r.score = Math.round((D.weights.sf * ns(r.pmsf) + D.weights.aor * na(r.aor) + D.weights.ped * np(r.ped)) * 100); });
+    recs.sort(function (a, b) { return b.score - a.score; });
+    recs.forEach(function (r, i) { r.rank = i + 1; r.pri = r.score >= 70 ? "High" : r.score >= 40 ? "Med" : "Low"; r.priColor = PRI[r.pri]; r.priBg = PRIBG[r.pri]; });
     return recs;
   }
+  function faultSet(rows) { var f = {}; rows.forEach(function (r) { if (r.vz <= -SIGMA) f[r.s] = 1; }); return f; }
+  function hourAvgAoR(rows, sidx, weekdayOnly) {
+    var sum = Array(24).fill(0), cnt = Array(24).fill(0);
+    rows.forEach(function (r) { if (r.s !== sidx) return; if (weekdayOnly && dayMeta[r.d].weekend) return; sum[r.h] += r.aor; cnt[r.h]++; });
+    return sum.map(function (s, h) { return cnt[h] ? s / cnt[h] : 0; });
+  }
 
-  function computeKpis(cur, prev, priority) {
-    const sum = (rows, k) => rows.reduce((s, r) => s + r[k], 0);
-    const mean = (rows, k) => (rows.length ? sum(rows, k) / rows.length : 0);
-    const volNow = sum(cur, "vol"), volPrev = sum(prev, "vol");
-    const aorNow = mean(cur, "aor"), aorPrev = mean(prev, "aor");
-    const sfNow = sum(cur, "sf"), sfPrev = sum(prev, "sf");
-    const high = priority.filter((r) => r.pri === "High").length;
-
-    const pctDelta = (now, prev) => { if (!prev) return { txt: "no prior data", up: null }; const c = (now - prev) / prev * 100; return { txt: (c >= 0 ? "↑" : "↓") + " " + Math.abs(c).toFixed(1) + "% vs prior", up: c >= 0 }; };
-    const vd = pctDelta(volNow, volPrev);
-    const ad = prev.length ? (() => { const c = aorNow - aorPrev; return { txt: (c >= 0 ? "↑" : "↓") + " " + Math.abs(c).toFixed(1) + " pts", up: c >= 0 }; })() : { txt: "no prior data", up: null };
-    const sd = pctDelta(sfNow, sfPrev);
-    let hd;
-    if (!prev.length) hd = { txt: "no prior data" };
-    else { const hp = computePriority(prev).filter((r) => r.pri === "High").length; const d = high - hp; hd = { txt: d === 0 ? "no change" : (d > 0 ? "↑ " : "↓ ") + Math.abs(d) + " vs prior" }; }
-
+  function computeKpis(cur, prior, priority) {
+    var sum = function (rows, k) { return rows.reduce(function (a, r) { return a + r[k]; }, 0); };
+    var mean = function (rows, k) { return rows.length ? sum(rows, k) / rows.length : 0; };
+    var volNow = sum(cur, "vol") / WIN, volPrev = prior.length ? sum(prior, "vol") / WIN : 0;
+    var aorNow = mean(cur, "aor"), aorPrev = mean(prior, "aor");
+    var sfNow = sum(cur, "sf"), sfPrev = sum(prior, "sf");
+    var high = priority.filter(function (r) { return r.pri === "High"; }).length;
+    var pct = function (n, p) { return p ? (n - p) / p * 100 : 0; };
+    function delta(now, prev, kind, goodDown) {
+      if (!prev) return { text: "—", color: "var(--mute)" };
+      var up, txt;
+      if (kind === "pts") { var c = now - prev; up = c >= 0; txt = (up ? "▲ " : "▼ ") + Math.abs(c).toFixed(1); }
+      else { var c2 = pct(now, prev); up = c2 >= 0; txt = (up ? "▲ " : "▼ ") + Math.abs(c2).toFixed(1) + "%"; }
+      var good = goodDown ? !up : up;
+      return { text: txt, color: good ? "var(--healthy)" : "var(--alert)" };
+    }
     return [
-      { label: "Total Volume", value: +(volNow / 1e6).toFixed(1), unit: "M veh", fmt: "M", delta: vd.txt, tone: "mute" },
-      { label: "Avg Arrivals-on-Red", value: +aorNow.toFixed(1), unit: "%", fmt: "pct", delta: ad.txt, tone: ad.up == null ? "mute" : ad.up ? "regress" : "improve" },
-      { label: "Split Failures", value: Math.round(sfNow), unit: "", fmt: "int", delta: sd.txt, tone: sd.up == null ? "mute" : sd.up ? "regress" : "improve" },
-      { label: "High-Priority Signals", value: high, unit: "", fmt: "int", delta: hd.txt, tone: "mute" },
+      { label: "Total Volume", target: volNow / 1000, fmt: function (v) { return v.toFixed(1) + "K"; }, sub: "vehicles · daily avg", d: delta(volNow, volPrev, "pct", false) },
+      { label: "Avg Arrivals-on-Red", target: aorNow, fmt: function (v) { return v.toFixed(1) + "%"; }, sub: "across " + SIG.length + " signals", d: delta(aorNow, aorPrev, "pts", true) },
+      { label: "Split Failures", target: sfNow, fmt: function (v) { return String(Math.round(v)); }, sub: "this window", d: delta(sfNow, sfPrev, "pct", true) },
+      { label: "High-Priority Signals", target: high, fmt: function (v) { return String(Math.round(v)); }, sub: "score ≥ 70", d: { text: "", color: "var(--mute)" } }
     ];
   }
 
-  function computeInsight(priority, cur) {
-    const top = priority[0];
-    if (!top || top.score <= 0) return "No signal stands out across the selected window. The network is within normal range.";
-    const i = sigById[top.id].idx, hours = {};
-    cur.forEach((r) => { if (r.s === i && !dayMeta[r.d].weekend && D.pmPeak.includes(r.h)) hours[r.h] = (hours[r.h] || 0) + r.sf; });
-    let wh = 18, wm = -1; for (const h in hours) if (hours[h] > wm) { wm = hours[h]; wh = +h; }
-    return `<b>${esc(top.name)}</b> (${top.id}) is the top retiming candidate: <span class="mono">${top.pmsf}</span> PM-peak split failures over the window, concentrated around <span class="mono">${wh}:00</span> weekdays.`;
-  }
-
-  function computeSeries() {
-    const idxs = winIndices().filter(dowOk).sort((a, b) => a - b);
-    const positions = [], tList = [], dayTicks = [];
-    idxs.forEach((d) => { for (let h = 0; h < 24; h++) { const pos = positions.length; positions.push({ d, h }); const dt = new Date(dayMeta[d].date.getTime()); dt.setHours(h); tList.push(dt); if (h === 0) dayTicks.push({ pos, label: FMT.MON[dayMeta[d].date.getMonth()] + " " + dayMeta[d].date.getDate() }); } });
-    const series = {}, colors = {};
-    D.featured.forEach((f) => {
-      const i = sigById[f.id].idx; colors[f.id] = seriesColor(f.id);
-      series[f.id] = positions.map((p) => { const r = rowMap[i + "_" + p.d + "_" + p.h]; return r ? { v: r.aor, anomaly: isAlert(r) } : { v: 0, anomaly: false }; });
-    });
-    return { series, tList, dayTicks, colors };
-  }
-
-  function computeHourPattern(cur) {
-    const wd = {}, we = {};
-    D.featured.forEach((f) => { wd[f.id] = Array.from({ length: 24 }, () => []); we[f.id] = Array.from({ length: 24 }, () => []); });
-    cur.forEach((r) => { const s = SIG[r.s]; if (!s.featured) return; (dayMeta[r.d].weekend ? we : wd)[s.id][r.h].push(r.aor); });
-    const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
-    const weekday = {}, weekend = {};
-    D.featured.forEach((f) => { weekday[f.id] = wd[f.id].map(avg); weekend[f.id] = we[f.id].map(avg); });
-    return { weekday, weekend };
-  }
-
-  function computeHeatmap(cur, activeIds) {
-    const rows = []; let max = 0;
-    D.featured.forEach((f) => {
-      if (!activeIds.includes(f.id)) return;
-      const i = sigById[f.id].idx, cells = Array(24).fill(0);
-      cur.forEach((r) => { if (r.s === i) cells[r.h] += r.sf; });
-      rows.push({ id: f.id, name: f.name, cells }); max = Math.max(max, ...cells);
-    });
-    return { rows, max };
-  }
-
   function computeAlerts(cur) {
-    const groups = {};
-    cur.filter(isAlert).forEach((r) => { const k = r.s + "_" + r.d; (groups[k] = groups[k] || []).push(r); });
-    const eps = [];
-    Object.values(groups).forEach((g) => {
-      let peak = g[0], pa = -1;
-      g.forEach((r) => { const a = Math.max(Math.abs(r.vz), Math.abs(r.az), Math.abs(r.sz)); if (a > pa) { pa = a; peak = r; } });
-      const zs = { volume: peak.vz, aor: peak.az, sf: peak.sz };
-      let dom = "volume", da = -1; for (const k in zs) if (Math.abs(zs[k]) > da) { da = Math.abs(zs[k]); dom = k; }
-      const sev = zs[dom];
-      const line = dom === "volume" ? `${sgn(sev)}σ volume, possible detector fault.` : dom === "aor" ? `${sgn(sev)}σ arrivals-on-red.` : `${sgn(sev)}σ split failures.`;
-      const subs = [];
-      if (dom !== "aor" && peak.az >= state.sigma) subs.push(`Arrivals-on-red ${Math.round(peak.aor)}% (${sgn(peak.az)}σ)`);
-      if (dom !== "sf" && peak.sz >= state.sigma) subs.push(`${peak.sf} split failures (${sgn(peak.sz)}σ)`);
-      if (dom !== "volume" && peak.vz <= -state.sigma) subs.push(`Volume ${Math.round(peak.vol)} vph (${sgn(peak.vz)}σ)`);
-      const dt = new Date(dayMeta[peak.d].date.getTime()); dt.setHours(peak.h);
-      const s = SIG[peak.s];
-      eps.push({ id: s.id, name: s.name, when: dt, sev: +sev.toFixed(1), metric: dom, line, sub: subs.length ? subs.join(". ") : "Excursion against the time-of-week baseline.", hex: seriesColor(s.id) });
+    var groups = {};
+    cur.filter(isAlert).forEach(function (r) { var k = r.s + "_" + r.d; (groups[k] = groups[k] || []).push(r); });
+    var eps = [];
+    Object.keys(groups).forEach(function (k) {
+      var g = groups[k], peak = g[0], pa = -1;
+      g.forEach(function (r) { var a = Math.max(Math.abs(r.vz), Math.abs(r.az), Math.abs(r.sz)); if (a > pa) { pa = a; peak = r; } });
+      var zs = { volume: peak.vz, aor: peak.az, sf: peak.sz }, dom = "volume", da = -1;
+      Object.keys(zs).forEach(function (m) { if (Math.abs(zs[m]) > da) { da = Math.abs(zs[m]); dom = m; } });
+      var sev = zs[dom], reason;
+      if (dom === "volume") reason = sgn(sev) + "σ volume drop — possible detector fault";
+      else if (dom === "aor") reason = sgn(sev) + "σ arrivals-on-red vs baseline";
+      else reason = sgn(sev) + "σ split failures vs baseline";
+      var dt = new Date(dayMeta[peak.d].date.getTime()); dt.setHours(peak.h);
+      eps.push({ id: SIG[peak.s].id, sidx: peak.s, when: dt, sev: +sev.toFixed(1), metric: dom, reason: reason, hour: peak.h });
     });
-    eps.sort((a, b) => b.when - a.when);
+    eps.sort(function (a, b) { return b.when - a.when; });
     return eps;
   }
 
-  /* ================= rendering ================= */
-  function fmtKpi(v, fmt) {
-    if (!Number.isFinite(v)) return "—";
-    if (fmt === "M" || fmt === "pct") return v.toFixed(1);
-    return Math.round(v).toLocaleString();
-  }
-  function reveal(node, delay) {
-    if (REDUCED || document.hidden) return;
-    node.style.opacity = "0"; node.style.transform = "translateY(8px)";
-    node.style.transition = "opacity 360ms var(--ease-in), transform 360ms var(--ease-in)";
-    setTimeout(() => { node.style.opacity = "1"; node.style.transform = "none"; }, delay);
+  function relTime(dt) {
+    var diffH = Math.round((winEndDate.getTime() + 23 * 3600e3 - dt.getTime()) / 3600e3);
+    if (diffH <= 0) return "now";
+    if (diffH < 24) return diffH + "h";
+    var dd = Math.round(diffH / 24); return dd + "d";
   }
 
-  function renderKpis(animate) {
-    const wrap = $("#kpiStrip"); wrap.innerHTML = "";
-    V.kpis.forEach((k, i) => {
-      const card = document.createElement("div"); card.className = "kpi";
-      card.innerHTML = `
-        <span class="caption">${k.label}</span>
-        <div class="kpi-val"><span class="kpi-num" data-target="${k.value}" data-fmt="${k.fmt}">${fmtKpi(k.value, k.fmt)}</span><span class="unit">${k.unit}</span></div>
-        <div class="kpi-delta ${k.tone}">${k.delta}</div>`;
-      wrap.appendChild(card);
-      if (animate) reveal(card, 100 + i * 40);
+  // ---- state + view ----
+  var state = { hero: "trend", selected: null, prog: 0 };
+  var V = null;
+  function compute() {
+    var cur = rowsFor(winIdx()), prior = rowsFor(priorIdx());
+    var priority = computePriority(cur);
+    var counts = { High: 0, Med: 0, Low: 0 }; priority.forEach(function (r) { counts[r.pri]++; });
+    var faults = faultSet(cur);
+    var sumAll = function (k) { return cur.reduce(function (a, r) { return a + r[k]; }, 0); };
+    var meanAll = function (k) { return cur.length ? sumAll(k) / cur.length : 0; };
+    // per-signal extras
+    var byId = {}; priority.forEach(function (r) {
+      r.loc = r.name; r.corr = (r.name.split("&")[0] || r.name).trim();
+      r.fault = !!faults[sigById[r.id].idx];
+      r.dailyVol = r.vol * 24; r.volK = (r.vol * 24 / 1000).toFixed(1) + "K";
+      r.last = ((sigById[r.id].idx * 7) % 14 + 1) + " mo"; // cosmetic: synthetic last-retimed
+      byId[r.id] = r;
     });
-    if (animate) countUp();
+    V = {
+      cur: cur, priority: priority, byId: byId, counts: counts,
+      kpis: computeKpis(cur, prior, priority),
+      alerts: computeAlerts(cur),
+      totals: { sf: sumAll("sf"), aor: meanAll("aor"), ped: meanAll("ped"), vol: sumAll("vol") / WIN },
+      attention: counts.High + counts.Med
+    };
   }
-  function countUp() {
-    if (REDUCED) return;
-    $$(".kpi-num").forEach((node) => {
-      const target = parseFloat(node.dataset.target); if (!Number.isFinite(target)) return;
-      const fmt = node.dataset.fmt, dur = 600, start = performance.now();
-      (function frame(now) {
-        const t = Math.min(1, (now - start) / dur), e = 1 - Math.pow(1 - t, 3);
-        node.textContent = fmtKpi(target * e, fmt);
-        if (t < 1) requestAnimationFrame(frame); else node.textContent = fmtKpi(target, fmt);
-      })(performance.now());
+
+  // ---- charts (SVG strings, theme-resolved colors) ----
+  function donutSVG(prog) {
+    var c = V.counts, total = SIG.length, r = 64, cx = 82, cy = 82, sw = 15, C = 2 * Math.PI * r;
+    var segs = [["High", c.High, cssVar("--alert")], ["Med", c.Med, cssVar("--amber")], ["Low", c.Low, cssVar("--healthy")]];
+    var arcs = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + cssVar("--line") + '" stroke-width="' + sw + '"/>';
+    var acc = 0;
+    segs.forEach(function (s) { var frac = s[1] / total, len = frac * C * prog, off = acc * C * prog; arcs += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + s[2] + '" stroke-width="' + sw + '" stroke-dasharray="' + len + ' ' + (C - len) + '" stroke-dashoffset="' + (-off) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')"/>'; acc += frac; });
+    var big = Math.round(V.attention * prog);
+    return '<div style="position:relative;width:164px;height:164px;margin:0 auto">' +
+      '<svg viewBox="0 0 164 164" width="164" height="164">' + arcs + '</svg>' +
+      '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">' +
+      '<div class="mono" style="font-size:42px;font-weight:600;line-height:1;color:var(--ink)">' + big + '</div>' +
+      '<div style="font-size:9.5px;color:var(--mute);margin-top:4px;letter-spacing:.4px;text-align:center;width:96px;line-height:1.25">SIGNALS NEED RETIMING</div>' +
+      '</div></div>';
+  }
+
+  function trendSVG() {
+    var W = 920, H = 300, pl = 44, pr = 14, pt = 18, pb = 30, pw = W - pl - pr, ph = H - pt - pb, maxY = 80;
+    var hours = range(6, 23);
+    var topId = (V.priority.filter(function (r) { return sigById[r.id].featured; })[0] || {}).id;
+    var sc = [cssVar("--s1"), cssVar("--s2"), cssVar("--s3"), cssVar("--s4")];
+    var series = D.featured.map(function (f, i) {
+      var avg = hourAvgAoR(V.cur, sigById[f.id].idx, false);
+      var ep = V.alerts.filter(function (a) { return a.id === f.id; })[0];
+      return { id: f.id, c: sc[i], v: hours.map(function (h) { return avg[h]; }), an: ep ? hours.indexOf(ep.hour) : -1, emph: f.id === topId };
     });
-  }
-
-  function renderInsight() { $("#insightText").innerHTML = `<span class="insight-lead">Insight.</span> ` + V.insight; }
-  function renderTabCounts() {
-    const pc = $('.tab[data-tab="priority"] .tab-count'); if (pc) pc.textContent = V.priority.length;
-    const ac = $("#alertTabCount"); if (ac) ac.textContent = V.alerts.length;
-  }
-
-  function windowLabel() {
-    const idxs = winIndices().filter(dowOk); if (!idxs.length) return "—";
-    const a = dayMeta[Math.min(...idxs)].date, b = dayMeta[Math.max(...idxs)].date;
-    return `${FMT.MON[a.getMonth()]} ${a.getDate()} – ${FMT.MON[b.getMonth()]} ${b.getDate()}`;
-  }
-
-  function renderSigChips() {
-    const wrap = $("#sigChips"); wrap.innerHTML = "";
-    D.featured.forEach((s) => {
-      const on = state.active.includes(s.id);
-      const chip = document.createElement("button");
-      chip.className = "chip " + (on ? "is-on" : "is-off"); chip.style.color = on ? seriesColor(s.id) : "";
-      chip.innerHTML = `<span class="dot" style="background:${seriesColor(s.id)}"></span>${s.id.replace("SIG-", "")}`;
-      chip.title = s.name;
-      chip.addEventListener("click", () => { toggleActive(s.id); });
-      wrap.appendChild(chip);
+    var n = hours.length, X = function (i) { return pl + i * (pw / (n - 1)); }, Y = function (v) { return pt + (1 - v / maxY) * ph; };
+    var s = "";
+    [0, 20, 40, 60, 80].forEach(function (g) { var y = Y(g); s += '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y + '" y2="' + y + '" stroke="' + cssVar("--line") + '"/>'; s += '<text x="' + (pl - 8) + '" y="' + (y + 3) + '" text-anchor="end" font-size="10" fill="' + cssVar("--mute") + '" font-family="JetBrains Mono,monospace">' + g + '</text>'; });
+    var labs = ["6a", "9a", "12p", "3p", "6p", "9p"];
+    [0, 3, 6, 9, 12, 15].forEach(function (idx, i) { s += '<text x="' + X(idx) + '" y="' + (H - 10) + '" text-anchor="middle" font-size="10" fill="' + cssVar("--mute") + '" font-family="JetBrains Mono,monospace">' + labs[i] + '</text>'; });
+    series.forEach(function (ser) {
+      var pts = ser.v.map(function (v, i) { return X(i) + "," + Y(v); }).join(" ");
+      s += '<polyline points="' + pts + '" fill="none" stroke="' + ser.c + '" stroke-width="' + (ser.emph ? 2.4 : 1.4) + '" stroke-linejoin="round" stroke-linecap="round"/>';
+      if (ser.an >= 0) { var cx = X(ser.an), cy = Y(ser.v[ser.an]); s += '<circle cx="' + cx + '" cy="' + cy + '" r="5" fill="' + ser.c + '" style="transform-origin:' + cx + 'px ' + cy + 'px;transform-box:fill-box;animation:pulseRing 1.9s cubic-bezier(0.2,0,0,1) infinite"/>'; s += '<circle cx="' + cx + '" cy="' + cy + '" r="3" fill="' + ser.c + '" stroke="' + cssVar("--surface") + '" stroke-width="1.5"/>'; }
     });
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="100%" preserveAspectRatio="none" style="display:block">' + s + '</svg>';
   }
-  function renderLegend() {
-    const wrap = $("#lineLegend"); wrap.innerHTML = "";
-    D.featured.forEach((s) => {
-      const on = state.active.includes(s.id);
-      const chip = document.createElement("button");
-      chip.className = "chip " + (on ? "is-on" : "is-off"); chip.style.color = on ? seriesColor(s.id) : "";
-      chip.innerHTML = `<span class="dot" style="background:${seriesColor(s.id)}"></span>${s.id} <span style="color:var(--mute-2);margin-left:2px">${esc(s.name.replace("State St & ", ""))}</span>`;
-      chip.addEventListener("click", () => { toggleActive(s.id); });
-      wrap.appendChild(chip);
+
+  function heatSVG(big) {
+    var rows = SIG.length, cols = 24, cellH = big ? 16 : 11, gap = 2, labelW = 64, topPad = 4, bottomPad = 16, W = 920;
+    var cw = (W - labelW) / cols - gap;
+    // sf per signal per hour over window
+    var grid = SIG.map(function () { return Array(24).fill(0); });
+    V.cur.forEach(function (r) { grid[r.s][r.h] += r.sf; });
+    var max = 1; grid.forEach(function (row) { row.forEach(function (v) { if (v > max) max = v; }); });
+    var amber = cssVar("--amber"), alert = cssVar("--alert");
+    function rgb(hex) { hex = hex.replace("#", ""); if (hex.length === 3) hex = hex.split("").map(function (c) { return c + c; }).join(""); var n = parseInt(hex, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+    var A = rgb(amber), B = rgb(alert);
+    function color(t) { if (t <= 0.02) return "transparent"; if (t < 0.45) return "rgba(" + A[0] + "," + A[1] + "," + A[2] + "," + (0.22 + t).toFixed(2) + ")"; var k = (t - 0.45) / 0.55, r = Math.round(A[0] + (B[0] - A[0]) * k), g = Math.round(A[1] + (B[1] - A[1]) * k), b = Math.round(A[2] + (B[2] - A[2]) * k); return "rgba(" + r + "," + g + "," + b + "," + (0.6 + 0.4 * k).toFixed(2) + ")"; }
+    var s = "", line = cssVar("--line"), mute = cssVar("--mute");
+    grid.forEach(function (row, ri) {
+      var y = topPad + ri * (cellH + gap);
+      s += '<text x="0" y="' + (y + cellH - 2) + '" font-size="' + (big ? 10 : 9) + '" fill="' + mute + '" font-family="JetBrains Mono,monospace">' + SIG[ri].id.replace("SIG-", "") + '</text>';
+      for (var c = 0; c < cols; c++) { var t = row[c] / max, f = color(t); s += '<rect x="' + (labelW + c * (cw + gap)) + '" y="' + y + '" width="' + cw + '" height="' + cellH + '" rx="1.5" fill="' + f + '"' + (f === "transparent" ? ' stroke="' + line + '" stroke-width="0.6" stroke-opacity="0.5"' : "") + '/>'; }
     });
+    var totalH = topPad + rows * (cellH + gap) + bottomPad;
+    [0, 6, 12, 18, 23].forEach(function (c) { s += '<text x="' + (labelW + c * (cw + gap) + cw / 2) + '" y="' + (totalH - 3) + '" text-anchor="middle" font-size="8.5" fill="' + mute + '" font-family="JetBrains Mono,monospace">' + c + ':00</text>'; });
+    return '<svg viewBox="0 0 ' + W + ' ' + totalH + '" width="100%" height="' + (big ? "100%" : "auto") + '" preserveAspectRatio="xMidYMid meet" style="display:block">' + s + '</svg>';
   }
-  function toggleActive(id) {
-    const i = state.active.indexOf(id);
-    if (i >= 0) state.active.splice(i, 1); else state.active.push(id);
-    renderSigChips(); renderLegend(); updateFilterActive(); renderActiveTab();
+
+  function sparkSVG(rec) {
+    var W = 300, H = 70, pl = 4, pr = 4, pt = 8, pb = 8, pw = W - pl - pr, ph = H - pt - pb;
+    var avg = hourAvgAoR(V.cur, sigById[rec.id].idx, false), hours = range(6, 23);
+    var vals = hours.map(function (h) { return avg[h]; }), max = Math.max.apply(null, vals) || 1;
+    var n = vals.length, X = function (i) { return pl + i * (pw / (n - 1)); }, Y = function (v) { return pt + (1 - v / max) * ph; };
+    var pts = vals.map(function (v, i) { return X(i) + "," + Y(v); }).join(" ");
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" preserveAspectRatio="none" style="display:block"><polyline points="' + pts + '" fill="none" stroke="' + rec.priColor.replace("var(--alert)", cssVar("--alert")).replace("var(--amber)", cssVar("--amber")).replace("var(--healthy)", cssVar("--healthy")) + '" stroke-width="1.6" stroke-linejoin="round"/></svg>';
   }
-  function renderDow() {
-    const wrap = $("#dowRow"); wrap.innerHTML = "";
-    ["S", "M", "T", "W", "T", "F", "S"].forEach((d, i) => {
-      const on = !!state.days[i];
-      const b = document.createElement("button"); b.className = "dow " + (on ? "is-on" : "is-off"); b.textContent = d;
-      b.title = FMT.DOW[i];
-      b.addEventListener("click", () => { state.days[i] = on ? 0 : 1; renderDow(); updateFilterActive(); refresh(); });
-      wrap.appendChild(b);
+
+  // ---- render regions ----
+  function fmtKpi(k, prog) { return k.fmt(k.target * prog); }
+
+  function renderStatic() {
+    $("#nhCount").textContent = SIG.length + " signals";
+    $("#alertCrit").textContent = V.alerts.filter(function (a) { return Math.abs(a.sev) > 4; }).length + " critical";
+    $("#liveLabel").textContent = "LIVE · " + FMT.MON[winEndDate.getMonth()] + " " + winEndDate.getDate();
+    $("#maint").textContent = "Tue " + FMT.MON[winEndDate.getMonth()] + " " + (winEndDate.getDate() + 3);
+    // network health rows
+    $("#nhRows").innerHTML =
+      nhRow("hi", "var(--alert)", "High priority", V.counts.High) +
+      nhRow("", "var(--amber)", "Medium priority", V.counts.Med) +
+      nhRow("", "var(--healthy)", "Low / nominal", V.counts.Low);
+    // alerts
+    $("#alertsBody").innerHTML = V.alerts.map(function (a) {
+      var edge = Math.abs(a.sev) > 4 ? "var(--alert)" : "var(--amber)";
+      return '<button class="alert" data-sig="' + a.id + '" style="border-left-color:' + edge + '">' +
+        '<div style="flex:1;min-width:0"><div class="r1"><span class="id" style="color:' + edge + '">' + a.id + '</span><span class="tm">' + relTime(a.when) + '</span></div>' +
+        '<div class="rs">' + esc(a.reason) + '</div></div></button>';
+    }).join("");
+    // bottom strip
+    $("#bottom").innerHTML =
+      bm(ICON.split, "var(--alert)", "Split Failures", V.totals.sf, "this window", function (v) { return String(Math.round(v)); }) +
+      bm(ICON.red, "var(--amber)", "Arrivals-on-Red", V.totals.aor, "network avg", function (v) { return v.toFixed(1) + "%"; }) +
+      bm(ICON.ped, "var(--s1)", "Pedestrian Delay", V.totals.ped, "avg per cycle", function (v) { return v.toFixed(1) + "s"; }) +
+      bm(ICON.vol, "var(--healthy)", "Total Volume", V.totals.vol / 1000, "daily avg", function (v) { return v.toFixed(1) + "K"; });
+    renderKpis(REDUCED ? 1 : 0);
+    renderRightQueue();
+    renderHero();
+  }
+  function nhRow(cls, col, lab, n) { return '<div class="nh-row ' + cls + '"><span class="sw" style="background:' + col + '"></span><span class="lb">' + lab + '</span><span class="vn" style="color:' + col + '">' + n + '</span></div>'; }
+  function bm(ic, col, lab, target, unit, fmt) { return '<div class="card bm"><div class="ic" style="color:' + col + '">' + ic + '</div><div style="flex:1"><div class="lb">' + lab + '</div><div class="row"><span class="vn bm-num" data-t="' + target + '" data-fmt2="1">' + fmt(REDUCED ? target : 0) + '</span><span class="un">' + unit + '</span></div></div></div>'; window._bmfmt = fmt; }
+
+  // bottom-strip number formatters (stored per-node)
+  var BM_FMT = [function (v) { return String(Math.round(v)); }, function (v) { return v.toFixed(1) + "%"; }, function (v) { return v.toFixed(1) + "s"; }, function (v) { return v.toFixed(1) + "K"; }];
+
+  function renderKpis(prog) {
+    $("#kpis").innerHTML = V.kpis.map(function (k) {
+      return '<div class="card kpi"><div class="lb">' + k.label + '</div><div class="row"><span class="vn">' + fmtKpi(k, prog) + '</span><span class="dl" style="color:' + k.d.color + '">' + k.d.text + '</span></div><div class="sb">' + k.sub + '</div></div>';
+    }).join("");
+  }
+
+  function renderRightQueue() {
+    var top = V.priority.slice(0, 5);
+    $("#rqBody").innerHTML = top.map(function (q) {
+      return '<button class="rq-item" data-sig="' + q.id + '">' +
+        '<div class="rq-r1"><span class="rq-rank">' + q.rank + '</span>' +
+        '<div style="flex:1;min-width:0"><div class="rq-id">' + q.id + '</div><div class="rq-loc">' + esc(q.loc) + '</div></div>' +
+        '<span class="pill" style="font-size:9.5px;padding:2px 8px;color:' + q.priColor + ';background:' + q.priBg + ';border:1px solid ' + q.priColor + '">' + q.pri + '</span></div>' +
+        '<div class="rq-r2"><div class="bar"><i style="width:0;background:' + q.priColor + '" data-w="' + q.score + '"></i></div>' +
+        '<span class="rq-score" style="color:' + q.priColor + '">' + q.score + '</span></div></button>';
+    }).join("");
+  }
+
+  function renderHero() {
+    var hv = state.hero, body = $("#heroBody");
+    // sync segmented + nav
+    Array.prototype.forEach.call(document.querySelectorAll("#seg button"), function (b) { b.classList.toggle("on", b.dataset.view === hv); });
+    Array.prototype.forEach.call(document.querySelectorAll("#nav button"), function (b) {
+      var on = (hv === "trend" && b.textContent === "Overview") || (hv === "queue" && b.textContent === "Priority") || (hv === "heatmap" && b.textContent === "Alerts");
+      b.classList.toggle("on", on);
     });
-  }
-  function updateFilterActive() {
-    $("#fc-sigs").classList.toggle("is-active", state.active.length !== D.featured.length);
-    $("#fc-dates").classList.toggle("is-active", state.win !== 7);
-    $("#fc-days").classList.toggle("is-active", !Object.values(state.days).every((v) => v === 1));
-    $("#fc-sigma").classList.toggle("is-active", state.sigma !== 2.5);
-  }
-  function wireFilters() {
-    $$("#dateSeg button").forEach((b) => b.addEventListener("click", () => {
-      $$("#dateSeg button").forEach((x) => x.classList.remove("is-on"));
-      b.classList.add("is-on"); state.win = +b.dataset.win; updateFilterActive(); refresh();
-    }));
-    const slider = $("#sigmaSlider");
-    slider.addEventListener("input", () => { state.sigma = +slider.value; $("#sigmaVal").textContent = (+slider.value).toFixed(1); updateFilterActive(); refresh(); });
-    $("#resetFilters").addEventListener("click", () => {
-      state.active = featuredIds.slice(); state.win = 7; state.sigma = 2.5;
-      Object.keys(state.days).forEach((k) => (state.days[k] = 1));
-      slider.value = 2.5; $("#sigmaVal").textContent = "2.5";
-      $$("#dateSeg button").forEach((x) => x.classList.toggle("is-on", x.dataset.win === "7"));
-      renderSigChips(); renderDow(); renderLegend(); updateFilterActive(); refresh();
-    });
-  }
+    $("#heroSub").textContent = hv === "queue" ? "Ranked retiming queue · all " + SIG.length + " signals"
+      : hv === "heatmap" ? "Split failures · signal × hour-of-day" : "Arrivals-on-red by hour · weekday + weekend";
 
-  /* ================= tabs ================= */
-  function moveUnderline() { const a = $(`.tab[data-tab="${state.tab}"]`); const u = $("#tabUnderline"); u.style.left = a.offsetLeft + "px"; u.style.width = a.offsetWidth + "px"; }
-  function setTab(tab) {
-    state.tab = tab;
-    try { localStorage.setItem("sp_tab", tab); } catch (e) {}
-    $$(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === tab));
-    $$(".tabpanel").forEach((p) => p.classList.toggle("is-on", p.id === "panel-" + tab));
-    const panel = $("#panel-" + tab);
-    if (!REDUCED && !document.hidden) { panel.style.animation = "none"; void panel.offsetWidth; panel.style.animation = "fadeUp 200ms var(--ease-in)"; }
-    moveUnderline(); renderActiveTab();
-  }
-  function wireTabs() {
-    $$(".tab").forEach((t) => t.addEventListener("click", () => setTab(t.dataset.tab)));
-    let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { moveUnderline(); renderActiveTab(); }, 120); });
-  }
-
-  function emptyState() {
-    return `<div class="empty-state">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <div class="eh">No intersections selected</div>
-      <div class="et">Pick one or more signals from the sidebar to populate this view.</div>
-    </div>`;
-  }
-
-  /* ================= per-tab renders ================= */
-  function renderActiveTab() {
-    if (state.tab === "performance") renderPerformance();
-    else if (state.tab === "priority") renderPriority();
-    else renderAlerts();
-  }
-
-  function renderPerformance() {
-    const lcw = $("#lcWindow"); if (lcw) lcw.textContent = windowLabel();
-    const lc = $("#lineChart");
-    if (state.active.length === 0) { lc.innerHTML = emptyState(); $("#smWeekday").innerHTML = ""; $("#smWeekend").innerHTML = ""; return; }
-    const s = computeSeries();
-    const emphasisId = (V.priority.find((r) => sigById[r.id].featured) || {}).id || featuredIds[0];
-    C.LineChart(lc, { series: s.series, tList: s.tList, dayTicks: s.dayTicks, colors: s.colors, activeIds: state.active, emphasisId, height: 340 });
-    const hp = computeHourPattern(V.cur);
-    const allH = [...Object.values(hp.weekday), ...Object.values(hp.weekend)].flat();
-    const yMax = Math.max(10, Math.ceil(Math.max(...allH, 0) / 10) * 10);
-    C.SmallMultiple($("#smWeekday"), { data: hp.weekday, colors: s.colors, activeIds: state.active, emphasisId, title: "Weekday", yMax, height: 230 });
-    C.SmallMultiple($("#smWeekend"), { data: hp.weekend, colors: s.colors, activeIds: state.active, emphasisId, title: "Weekend", yMax, height: 230 });
-  }
-
-  function scoreColor(score) {
-    const t = Math.min(1, score / 100), lerp = (a, b, k) => a.map((x, i) => Math.round(x + (b[i] - x) * k));
-    const accent = cssRGB("--accent"), warn = cssRGB("--warn"), alert = cssRGB("--alert");
-    const c = t < 0.5 ? lerp(accent, warn, t / 0.5) : lerp(warn, alert, (t - 0.5) / 0.5);
-    return `rgb(${c[0]},${c[1]},${c[2]})`;
-  }
-  function renderPriority() {
-    const table = $("#ptable");
-    const maxScore = Math.max(...V.priority.map((r) => r.score), 1) || 1;
-    table.innerHTML = `
-      <thead><tr>
-        <th class="l">#</th><th class="l">ID</th><th class="l">Signal</th>
-        <th>PM SF</th><th>AoR</th><th>Ped (s)</th><th>Vol (vph)</th><th>Score</th><th class="l" style="padding-left:18px">Priority</th>
-      </tr></thead><tbody></tbody>`;
-    const tb = $("tbody", table);
-    V.priority.forEach((r) => {
-      const tr = document.createElement("tr");
-      if (r.pri === "High") tr.classList.add("is-high"); else if (r.pri === "Medium") tr.classList.add("is-medium");
-      const barW = (r.score / maxScore) * 70;
-      tr.innerHTML = `
-        <td class="l rank">${r.rank}</td>
-        <td class="l sig-id">${esc(r.id)}</td>
-        <td class="l sig-name">${esc(r.name)}</td>
-        <td class="num">${r.pmsf}</td>
-        <td class="num">${r.aor.toFixed(1)}%</td>
-        <td class="num">${r.ped.toFixed(1)}</td>
-        <td class="num">${Math.round(r.vol)}</td>
-        <td class="num score-cell"><span class="score-bar" style="width:${barW}px;background:${scoreColor(r.score)}"></span><span class="score-num">${r.score.toFixed(1)}</span></td>
-        <td class="l" style="padding-left:18px"><span class="pri-pill ${r.pri.toLowerCase()}"><span class="pdot"></span>${r.pri}</span></td>`;
-      tr.addEventListener("click", () => openDrawer(r));
-      tb.appendChild(tr);
-    });
-    const hm = computeHeatmap(V.cur, state.active);
-    C.Heatmap($("#heatmap"), hm);
-    $("#heatScale").innerHTML = `0 <span style="display:inline-block;width:54px;height:9px;border-radius:3px;margin:0 6px;vertical-align:middle;background:linear-gradient(90deg,var(--surface-alt),var(--warn),var(--alert));border:1px solid var(--line)"></span> ${hm.max}`;
-  }
-
-  function renderAlerts() {
-    const eps = V.alerts;
-    // alerts-per (all signals with alerts) + scatter lanes
-    const cnt = {}; eps.forEach((e) => (cnt[e.id] = (cnt[e.id] || 0) + 1));
-    const perData = Object.keys(cnt).map((id) => ({ id, n: cnt[id], hex: seriesColor(id) })).sort((a, b) => b.n - a.n);
-    C.HorizontalBars($("#alertBars"), { data: perData, height: 200 });
-
-    const lanes = perData.map((d) => ({ id: d.id, hex: seriesColor(d.id) }));
-    const laneIdx = {}; lanes.forEach((l, i) => (laneIdx[l.id] = i));
-    const points = eps.map((e) => ({ lane: laneIdx[e.id], t: e.when, sev: e.sev, hex: e.hex, id: e.id }));
-    const idxs = winIndices().filter(dowOk);
-    let tMin = 0, tMax = 1, dayTicks = [];
-    if (idxs.length) {
-      const sorted = [...idxs].sort((a, b) => a - b);
-      tMin = dayMeta[sorted[0]].date.getTime();
-      const last = new Date(dayMeta[sorted[sorted.length - 1]].date.getTime()); last.setHours(23); tMax = last.getTime();
-      [...new Set([sorted[0], sorted[Math.floor(sorted.length / 2)], sorted[sorted.length - 1]])]
-        .forEach((d) => dayTicks.push({ t: dayMeta[d].date.getTime(), label: FMT.MON[dayMeta[d].date.getMonth()] + " " + dayMeta[d].date.getDate() }));
+    if (hv === "trend") {
+      var sc = [cssVar("--s1"), cssVar("--s2"), cssVar("--s3"), cssVar("--s4")];
+      var legend = D.featured.map(function (f, i) { return '<span class="l"><i style="background:' + sc[i] + '"></i>' + f.id + '</span>'; }).join("");
+      body.innerHTML =
+        '<div class="hero-body">' +
+        '<div class="legend">' + legend + '<span class="an"><i></i>anomaly vs baseline</span></div>' +
+        '<div class="trend-wrap">' + trendSVG() + '</div>' +
+        '<div class="heat-foot"><div class="r"><h3>SPLIT-FAILURE HEATMAP · SIGNAL × HOUR</h3><div class="scale">low<i></i>high</div></div>' + heatSVG(false) + '</div>' +
+        '</div>';
+    } else if (hv === "heatmap") {
+      body.innerHTML = '<div style="flex:1;min-height:0;display:flex;flex-direction:column;padding:14px 16px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><p style="font-size:11.5px;color:var(--mute)">Each cell = split failures that hour, relative to the worst cell. Empty = none recorded.</p><div class="scale">low<i></i>high</div></div>' +
+        '<div style="flex:1;min-height:0">' + heatSVG(true) + '</div></div>';
+    } else {
+      var rowsHtml = V.priority.map(function (q) {
+        return '<tr data-sig="' + q.id + '"><td class="mono" style="color:var(--mute)">' + q.rank + '</td>' +
+          '<td class="mono" style="font-weight:600">' + q.id + '</td>' +
+          '<td>' + esc(q.loc) + '</td>' +
+          '<td><div style="display:flex;align-items:center;gap:9px"><div class="bar"><i style="width:0;background:' + q.priColor + '" data-w="' + q.score + '"></i></div><span class="mono" style="font-weight:600;width:22px;text-align:right;color:' + q.priColor + '">' + q.score + '</span></div></td>' +
+          '<td class="r mono">' + q.aor.toFixed(0) + '</td>' +
+          '<td class="r mono">' + q.pmsf + '</td>' +
+          '<td class="r mono">' + q.ped.toFixed(0) + '</td>' +
+          '<td class="c"><span class="pill" style="color:' + q.priColor + ';background:' + q.priBg + ';border:1px solid ' + q.priColor + '">' + q.pri + '</span></td>' +
+          '<td class="r mono" style="color:var(--mute)">' + q.last + '</td></tr>';
+      }).join("");
+      body.innerHTML = '<div class="qtable-wrap"><table class="qt"><thead><tr>' +
+        '<th>#</th><th>SIGNAL</th><th>LOCATION</th><th style="width:150px">SCORE</th><th class="r">AoR %</th><th class="r">SF (PM)</th><th class="r">PED s</th><th class="c">PRIORITY</th><th class="r">LAST RETIMED</th>' +
+        '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
     }
-    C.ScatterLane($("#alertScatter"), { lanes, points, tMin, tMax, dayTicks, height: 200 });
+    // redraw donut at current prog (theme-safe) + animate bars
+    paintDonut();
+    animateBars();
+  }
 
-    // feed, grouped by day
-    const feed = $("#alertFeed"); feed.innerHTML = "";
-    if (!eps.length) { feed.innerHTML = `<div class="empty-state" style="padding:48px 20px"><div class="eh">No alerts</div><div class="et">Nothing exceeds σ ≥ ${state.sigma.toFixed(1)} in this window. Lower the threshold to see more.</div></div>`; return; }
-    const groups = {};
-    eps.forEach((a) => { const k = dayKey(a.when); (groups[k] = groups[k] || []).push(a); });
-    Object.keys(groups).forEach((k) => {
-      const h = document.createElement("div"); h.className = "alert-group-head"; h.textContent = k; feed.appendChild(h);
-      groups[k].forEach((a, i) => {
-        const isHi = Math.abs(a.sev) > 4;
-        const card = document.createElement("div"); card.className = "alert-card " + (isHi ? "sev-alert" : "sev-warn");
-        const t = a.when, timeStr = `${FMT.DOW[t.getDay()]} ${FMT.MON[t.getMonth()]} ${t.getDate()}, ${fmtTime(t)}`;
-        card.innerHTML = `
-          <div class="alert-row1">
-            <div class="alert-sig"><span class="sdot" style="background:${isHi ? "var(--alert)" : a.hex}"></span><span class="sid">${esc(a.id)}</span><span class="sname">${esc(a.name)}</span></div>
-            <span class="alert-time">${timeStr}</span>
-          </div>
-          <div class="alert-line">${a.line.replace(/([+-]?\d[\d.]*σ)/g, '<span class="sig-val">$1</span>')}</div>
-          <div class="alert-sub">${a.sub.replace(/([+-]?\d[\d.]*σ)/g, '<span class="sig-val" style="font-family:var(--mono)">$1</span>')}</div>
-          <button class="alert-inspect">inspect <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M9 7h8v8"/></svg></button>`;
-        card.querySelector(".alert-inspect").addEventListener("click", () => {
-          const row = V.priority.find((r) => r.id === a.id); if (row) openDrawer(row);
-        });
-        feed.appendChild(card); reveal(card, 60 + i * 40);
+  function animateBars() {
+    requestAnimationFrame(function () {
+      Array.prototype.forEach.call(document.querySelectorAll(".bar i[data-w], .comp .track i[data-w]"), function (el) {
+        el.style.width = (REDUCED ? 1 : 1) * parseFloat(el.dataset.w) + "%";
       });
     });
   }
+  function paintDonut() { $("#donut").innerHTML = donutSVG(state.prog); }
 
-  function dayKey(d) {
-    const diff = Math.round((new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5);
-    if (diff === 0) return "Today"; if (diff === 1) return "Yesterday";
-    return `${FMT.MON[d.getMonth()]} ${d.getDate()}`;
+  // ---- drawer ----
+  function openDrawer(id) {
+    var r = V.byId[id]; if (!r) return;
+    state.selected = id;
+    var comp = [
+      { label: "PM split failures", pct: 55, w: Math.min(100, Math.round(r.pmsf / Math.max(1, Math.max.apply(null, V.priority.map(function (x) { return x.pmsf; }))) * 100)), c: "var(--alert)" },
+      { label: "Arrivals-on-red", pct: 30, w: Math.min(100, Math.round(r.aor / 65 * 100)), c: "var(--amber)" },
+      { label: "Pedestrian delay", pct: 15, w: Math.min(100, Math.round(r.ped / 45 * 100)), c: "var(--s1)" }
+    ];
+    var faultHtml = r.fault ? '<div class="dr-fault"><b>!</b><div>Detector fault suspected — volume collapsed against this signal\'s own baseline with no incident logged. Scores are unreliable until the loop is serviced.</div></div>' : "";
+    $("#drawer").innerHTML =
+      '<div class="dr-h"><div>' +
+      '<div style="display:flex;align-items:center;gap:10px"><span class="id">' + r.id + '</span>' +
+      '<span class="pill" style="font-size:10px;color:' + r.priColor + ';background:' + r.priBg + ';border:1px solid ' + r.priColor + '">' + r.pri + ' priority</span></div>' +
+      '<div class="loc">' + esc(r.loc) + '</div>' +
+      '<div class="sub">' + esc(r.corr) + ' · last retimed ' + r.last + ' ago</div></div>' +
+      '<button class="dr-x" id="drX" aria-label="Close">✕</button></div>' +
+      '<div class="dr-body">' +
+      '<div class="dr-score"><div><div class="big" style="color:' + r.priColor + '">' + r.score + '</div><div class="cap">RETIMING SCORE / 100</div></div><div style="flex:1">' + sparkSVG(r) + '</div></div>' +
+      '<h3 class="dr-h3">SCORE COMPOSITION</h3><div class="comp">' +
+      comp.map(function (c) { return '<div><div class="r"><span class="l">' + c.label + '</span><span class="w">weight ' + c.pct + '%</span></div><div class="track"><i style="width:0;background:' + c.c + '" data-w="' + c.w + '"></i></div></div>'; }).join("") +
+      '</div>' +
+      '<h3 class="dr-h3">CURRENT METRICS</h3><div class="dr-metrics">' +
+      drM("Arrivals-on-Red", r.aor.toFixed(0) + "%") + drM("Split Failures (PM)", r.pmsf) +
+      drM("Pedestrian Delay", r.ped.toFixed(0) + "s") + drM("Daily Volume", r.volK) +
+      '</div>' + faultHtml + '</div>' +
+      '<div class="dr-foot"><button class="primary">Add to retiming plan<span class="demo-tag">demo</span></button><button class="ghost">Open log<span class="demo-tag">demo</span></button></div>';
+    $("#drX").addEventListener("click", closeDrawer);
+    $("#scrim").classList.add("on");
+    $("#drawer").classList.add("on"); $("#drawer").setAttribute("aria-hidden", "false");
+    animateBars();
   }
-  function fmtTime(t) { let h = t.getHours(); const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return `${h}:${String(t.getMinutes()).padStart(2, "0")} ${ap}`; }
+  function drM(l, v) { return '<div class="dr-m"><div class="l">' + l + '</div><div class="v">' + v + '</div></div>'; }
+  function closeDrawer() { state.selected = null; $("#scrim").classList.remove("on"); $("#drawer").classList.remove("on"); $("#drawer").setAttribute("aria-hidden", "true"); }
 
-  /* ================= drawer ================= */
-  function openDrawer(r) {
-    const sig = sigById[r.id], hex = sig ? seriesColor(sig.id) : cssVar("--mute");
-    $("#drawerDot").style.background = hex;
-    $("#drawerId").textContent = `${r.id} · rank ${r.rank}`;
-    $("#drawerTitle").textContent = r.name;
-    $("#drawerBody").innerHTML = `
-      <div class="drawer-stats">
-        <div class="drawer-stat"><span class="caption">Composite score</span><div class="v" style="color:${scoreColor(r.score)}">${(r.score || 0).toFixed(1)}</div></div>
-        <div class="drawer-stat"><span class="caption">PM split failures</span><div class="v">${r.pmsf}</div></div>
-        <div class="drawer-stat"><span class="caption">Arrivals-on-red</span><div class="v">${(r.aor || 0).toFixed(1)}%</div></div>
-        <div class="drawer-stat"><span class="caption">Ped delay (s)</span><div class="v">${(r.ped || 0).toFixed(1)}</div></div>
-      </div>
-      <div class="drawer-section-t">Recommendation</div>
-      <p style="font-size:14px;color:var(--ink);margin:0 0 18px;line-height:1.55">
-        ${r.pri === "High"
-        ? "Re-time the PM-peak split plan; reallocate green to the heaviest through phase between 16:00–19:00 on weekdays. Verify upstream coordination offset."
-        : r.pri === "Medium"
-          ? "Watchlist. Review the PM-peak split allocation; revisit if the score trends up next window."
-          : "Within normal range. Continue monitoring; no retiming action required this window."}
-      </p>
-      <div class="drawer-section-t">Window context</div>
-      <p style="font-size:13.5px;color:var(--mute);margin:0;line-height:1.55">Volume ${Math.round(r.vol)} vph · ${windowLabel()} · weekday PM peak. Composite score weights PM-peak split failures (55%), arrivals-on-red (30%), pedestrian delay (15%).</p>`;
-    $("#scrim").classList.add("is-on"); $("#drawer").classList.add("is-on"); $("#drawer").setAttribute("aria-hidden", "false");
-    $("#drawerClose").focus();
+  // ---- icons ----
+  function ic(paths) { return '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>'; }
+  var ICON = {
+    split: ic('<path d="M12 3v6"/><path d="M12 9l-5 5"/><path d="M12 9l5 5"/><path d="M7 14v7"/><path d="M17 14v7"/>'),
+    red: ic('<rect x="8" y="3" width="8" height="18" rx="4"/><circle cx="12" cy="8" r="1.6" fill="currentColor" stroke="none"/>'),
+    ped: ic('<circle cx="12" cy="4.5" r="1.8"/><path d="M12 7v7"/><path d="M9 10l3-1 3 1"/><path d="M10 21l2-5 2 5"/>'),
+    vol: ic('<path d="M3 17l5-5 4 3 8-8"/><path d="M17 7h4v4"/>')
+  };
+
+  // ---- count-up + donut sweep ----
+  function animateProg() {
+    if (REDUCED) { state.prog = 1; renderKpis(1); paintDonut(); setBottom(1); return; }
+    var t0 = performance.now(), dur = 900;
+    function tick(now) {
+      var p = Math.min(1, (now - t0) / dur); p = 1 - Math.pow(1 - p, 3); state.prog = p;
+      renderKpis(p); paintDonut(); setBottom(p);
+      if (p < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
   }
-  function closeDrawer() { $("#scrim").classList.remove("is-on"); $("#drawer").classList.remove("is-on"); $("#drawer").setAttribute("aria-hidden", "true"); }
-
-  /* ================= user menu ================= */
-  function wireUserMenu() {
-    const btn = $("#userBtn"), menu = $("#userMenu"); if (!btn || !menu) return;
-    const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
-    btn.addEventListener("click", (e) => { e.stopPropagation(); const open = menu.hidden; menu.hidden = !open; btn.setAttribute("aria-expanded", String(open)); });
-    document.addEventListener("click", (e) => { if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) close(); });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  function setBottom(p) {
+    Array.prototype.forEach.call(document.querySelectorAll(".bm-num"), function (el, i) { el.textContent = BM_FMT[i](parseFloat(el.dataset.t) * p); });
   }
 
-  /* ================= theme toggle ================= */
-  function wireThemeToggle() {
-    const btn = $("#themeBtn"); if (!btn) return;
-    const root = document.documentElement;
-    const sync = () => { const dark = root.getAttribute("data-theme") === "dark"; btn.setAttribute("aria-pressed", String(dark)); };
+  // ---- theme ----
+  function wireTheme() {
+    var btn = $("#themeBtn"), root = document.documentElement;
+    function sync() { var dark = root.getAttribute("data-theme") === "dark"; $("#themeLabel").textContent = dark ? "Light" : "Dark"; $(".ico-sun", btn).style.display = dark ? "block" : "none"; $(".ico-moon", btn).style.display = dark ? "none" : "block"; }
     sync();
-    btn.addEventListener("click", () => {
-      const dark = root.getAttribute("data-theme") === "dark";
-      if (dark) root.removeAttribute("data-theme"); else root.setAttribute("data-theme", "dark");
+    btn.addEventListener("click", function () {
+      var dark = root.getAttribute("data-theme") === "dark";
+      root.setAttribute("data-theme", dark ? "light" : "dark");
       try { localStorage.setItem("sp_theme", dark ? "light" : "dark"); } catch (e) {}
-      sync();
-      // SVG fills were set to literal resolved colors at render; re-render so charts re-read tokens.
-      renderSigChips(); renderLegend(); refresh();
+      sync(); paintDonut(); renderHero(); // re-resolve chart colors
     });
   }
 
-  /* ================= assistant (grounded helper) ================= */
+  // ---- delegation ----
+  function wireClicks() {
+    document.body.addEventListener("click", function (e) {
+      var sigEl = e.target.closest("[data-sig]"); if (sigEl) { openDrawer(sigEl.dataset.sig); return; }
+      var seg = e.target.closest("#seg button, #nav button"); if (seg && seg.dataset.view) { state.hero = seg.dataset.view; renderHero(); return; }
+    });
+    $("#scrim").addEventListener("click", closeDrawer);
+    $("#viewAll").addEventListener("click", function () { state.hero = "queue"; renderHero(); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") { closeDrawer(); closeAsst(); } });
+  }
+
+  // ---- assistant (grounded) ----
   function asstFindSignal(t) {
-    let m = t.match(/sig[\s-]?(\d{3,4})/); if (m && sigById["SIG-" + m[1]]) return "SIG-" + m[1];
+    var m = t.match(/sig[\s-]?(\d{3,4})/); if (m && sigById["SIG-" + m[1]]) return "SIG-" + m[1];
     m = t.match(/\b(\d{3,4})\b/); if (m && sigById["SIG-" + m[1]]) return "SIG-" + m[1];
-    for (const s of SIG) { const cross = (s.name.split("&")[1] || "").trim().toLowerCase(); if (cross && t.includes(cross)) return s.id; }
-    for (const s of SIG) { if (t.includes(s.name.toLowerCase())) return s.id; }
+    for (var i = 0; i < SIG.length; i++) { var cross = (SIG[i].name.split("&")[1] || "").trim().toLowerCase(); if (cross && t.indexOf(cross) >= 0) return SIG[i].id; }
     return null;
   }
-  function asstFault() { return V.alerts.find((a) => a.metric === "volume"); }
-  function asstSigCard(r, extra) {
-    const rec = r.pri === "High"
-      ? "Recommendation: re-time the PM-peak split plan, reallocate green to the heaviest through phase 16:00–19:00 on weekdays."
-      : r.pri === "Medium" ? "Watchlist, review the PM-peak split allocation." : "Within normal range, keep monitoring.";
-    return `<p><b>${esc(r.name)}</b> (${r.id}) is rank <span class="mono">${r.rank}</span> of ${V.priority.length}, score <span class="mono">${r.score.toFixed(1)}</span> (${r.pri}).</p>
-      <ul class="asst-list"><li>PM split failures: <span class="mono">${r.pmsf}</span></li><li>Arrivals-on-red: <span class="mono">${r.aor.toFixed(1)}%</span></li><li>Ped delay: <span class="mono">${r.ped.toFixed(1)}s</span></li><li>Volume: <span class="mono">${Math.round(r.vol)} vph</span></li></ul>
-      ${extra ? `<p>${extra}</p>` : ""}<p>${rec}</p><button class="asst-action" data-sig="${r.id}">Open full detail →</button>`;
+  function asstSigCard(r) {
+    var rec = r.pri === "High" ? "Re-time the PM-peak split plan; reallocate green to the heaviest through phase 16:00–19:00 weekdays."
+      : r.pri === "Med" ? "Watchlist — review the PM-peak split allocation." : "Within normal range; keep monitoring.";
+    return "<p><b>" + esc(r.loc) + "</b> (" + r.id + ") is rank " + r.rank + " of " + V.priority.length + ", score " + r.score + " (" + r.pri + ").</p>" +
+      "<ul><li>PM split failures: " + r.pmsf + "</li><li>Arrivals-on-red: " + r.aor.toFixed(0) + "%</li><li>Ped delay: " + r.ped.toFixed(0) + "s</li></ul><p>" + rec + "</p>" +
+      '<button class="asst-act" data-sig="' + r.id + '">Open full detail →</button>';
   }
   function asstAnswer(q) {
-    const t = q.toLowerCase().trim();
-    const words = t.replace(/[^\w\s]/g, " ").split(/\s+/).filter(Boolean);
-    const has = (...ws) => ws.some((w) => t.includes(w));            // substring
-    const hasW = (...ws) => ws.some((w) => words.includes(w));        // whole word
-    const P = V.priority, top = P[0], win = windowLabel();
-    const highN = P.filter((r) => r.pri === "High").length, A = V.alerts;
-
-    // 1) specific intersection
-    const sid = asstFindSignal(t);
-    if (sid) return asstSigCard(P.find((r) => r.id === sid));
-
-    // 2) capabilities
-    if (has("what can you", "what do you do", "how can you help", "capab", "your job", "who are you")) {
-      return `<p>I'm a built-in helper for this dashboard. I can explain <b>what it is</b> and how it works, define the <b>metrics</b> (split failures, arrivals-on-red, pedestrian delay), explain <b>how alerts are detected</b> and how the <b>priority score</b> works, and answer from the <b>live data</b>: the worst signal, current alerts, or any intersection (try "why SIG-1003"). What would you like?</p>`;
-    }
-
-    // 3) project / "what is this"
-    if (has("what is this", "what's this", "what is it", "what am i looking", "what does this", "about this", "what is the dashboard", "explain this", "purpose", "what is signal performance") || (hasW("about") && words.length <= 3)) {
-      return `<p>This is a <b>traffic-signal performance dashboard</b> for a DOT operations team. It turns raw signal-controller data into one answer: which signals are misbehaving and which to retime first. Three tabs, <b>Performance</b> (what each signal is doing), <b>Priority</b> (a ranked retiming queue), and <b>Alerts</b> (abnormal behavior). It's showing sample data for ${SIG.length} intersections right now. Ask me "how does it work" or "what is ATSPM" for more.</p>`;
-    }
-    if (has("atspm", "automated traffic")) {
-      return `<p><b>ATSPM</b> = Automated Traffic Signal Performance Measures: using high-resolution controller data (volume, arrivals-on-red, split failures, pedestrian delay) to manage signals <i>proactively</i> instead of waiting for complaints. This dashboard mirrors that approach, reactive to proactive.</p>`;
-    }
-    if (has("how does it work", "how does this work", "how is this built", "how was this", "tech stack", "technology", "built with", "how do you work", "under the hood", "framework")) {
-      return `<p>It's a static web app, hand-rolled SVG charts, no chart library, that computes everything <b>live in your browser</b> from a raw dataset, so the filters genuinely re-score the data. Behind it is a <b>Python pipeline</b> (pandas) that does the cleaning, the composite priority scoring, and the anomaly detection; the dashboard uses the same rules. No backend required.</p>`;
-    }
-    if (has("real data", "where does the data", "data come from", "data source", "fake data", "is this real", "synthetic", "sample data")) {
-      return `<p>The numbers are produced by a <b>real analysis pipeline</b>, but the underlying signal data is <b>synthetic and schema-faithful</b> to UDOT Open ATSPM exports. Drop in real UDOT CSVs (or, in production, live SCATS / RITIS feeds) and the same scoring and alerting run unchanged.</p>`;
-    }
-    if (has("how do i use", "how to use", "navigate", "what are the tabs", "tabs", "get started", "how do i read")) {
-      return `<p>Three tabs: <b>Performance</b> (hourly arrivals-on-red + weekday/weekend patterns), <b>Priority</b> (the ranked retiming queue + a split-failure heatmap), and <b>Alerts</b> (anomalies vs each signal's baseline). Use the left sidebar to filter by signal, date window, day of week, and the anomaly threshold, everything updates live, including me.</p>`;
-    }
-
-    // 4) summary / status
-    if (t === "" || has("happening", "summary", "overview", "today", "status", "going on", "brief", "tell me")) {
-      const f = asstFault();
-      return `<p>Over <b>${win}</b>, <b>${esc(top.name)}</b> (${top.id}) is the top retiming candidate, score <span class="mono">${top.score.toFixed(1)}</span> (${top.pri}). ${highN} high-priority signal${highN !== 1 ? "s" : ""}, ${A.length} alert${A.length !== 1 ? "s" : ""} at σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span>${f ? `, including a likely detector fault at <b>${f.id}</b>` : ""}.</p>`;
-    }
-
-    // 5) worst / retime first
-    if (has("worst", "retime", "first", "biggest problem", "most attention", "what should i fix", "priority signal")) return asstSigCard(top, `It tops the queue of ${P.length} signals.`);
-
-    // 6) how alerts/anomalies are detected (explanation) — before the alert listing
-    if (has("how are alert", "how do alert", "how are anomal", "how do you detect", "what is an alert", "what is a anomaly", "what is an anomaly", "how alerts work", "baseline", "z-score", "z score", "how do you flag")) {
-      return `<p>Each signal gets its own <b>baseline</b> per (weekday/weekend, hour). The recent window is z-scored against it, anything past the <b>sigma threshold</b> (the sidebar slider, currently <span class="mono">${state.sigma.toFixed(1)}</span>) is flagged. The baseline is built from history only, so an anomaly can't hide inside its own baseline.</p>`;
-    }
-    if (has("detector fault", "detector")) {
-      const f = asstFault();
-      return `<p>A <b>detector fault</b> is when a signal's vehicle detector stops reporting, so volume collapses toward zero against its normal pattern (a large negative sigma).${f ? ` Here <b>${f.id}</b> shows one: ${f.line}` : ""} You want to catch these before they skew the timing.</p>`;
-    }
-
-    // 7) alert listing
-    if (has("alert", "anomal", "broken", "spike", "wrong", "issues", "problems")) {
-      if (!A.length) return `<p>No alerts above σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span> in this window. Lower the threshold in the sidebar to surface more.</p>`;
-      const li = A.slice(0, 6).map((a) => `<li><b>${a.id}</b> ${a.line} <span style="color:var(--mute)">· ${FMT.DOW[a.when.getDay()]} ${FMT.MON[a.when.getMonth()]} ${a.when.getDate()}</span></li>`).join("");
-      return `<p>${A.length} alert${A.length !== 1 ? "s" : ""} at σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span>:</p><ul class="asst-list">${li}</ul>`;
-    }
-
-    // 8) metrics
-    if (has("split fail", "split-fail") || hasW("split", "sf")) return `<p><b>Split failures</b> are phases that ran out of green during a cycle, the strongest sign of oversaturation (55% of the score). <b>${esc(top.name)}</b> leads with <span class="mono">${top.pmsf}</span> PM-peak failures over ${win}.</p>`;
-    if (has("arrivals", "on red", "progression") || hasW("aor")) { const k = V.kpis.find((x) => x.label.includes("Arrivals")); return `<p><b>Arrivals-on-red</b> is the share of vehicles hitting a red; high under load means poor progression (30% of the score). Network average is <span class="mono">${k.value}%</span> (${k.delta}).</p>`; }
-    if (hasW("volume", "vph", "vehicles", "traffic")) { const k = V.kpis[0]; return `<p><b>Total volume</b> over ${win} is <span class="mono">${k.value} ${k.unit}</span> (${k.delta}).</p>`; }
-    if (has("pedestrian", "ped delay") || hasW("ped", "walk", "crossing")) return `<p><b>Pedestrian delay</b> is the average wait after a button press (15% of the score). <b>${esc(top.name)}</b> averages <span class="mono">${top.ped.toFixed(1)}s</span>.</p>`;
-
-    // 9) score / priority queue
-    if (has("score", "composite", "weight", "ranked", "ranking", "how is rank", "retiming queue", "priority queue")) return `<p>The <b>composite score</b> = 55% PM-peak split failures + 30% arrivals-on-red + 15% pedestrian delay, each min-max normalized across the ${P.length} signals and scaled 0–100. ≥70 = High, ≥40 = Medium. The Priority tab ranks all ${P.length} signals so you know what to retime first.</p>`;
-
-    // 10) filters / features
-    if (has("filter", "window", "sigma", "threshold", "date range") || hasW("days")) return `<p>Current view: <b>${state.win}-day</b> window (${win}), σ ≥ <span class="mono">${state.sigma.toFixed(1)}</span>, charting ${state.active.length} signal${state.active.length !== 1 ? "s" : ""}. Change these in the sidebar and every number, and my answers, update live.</p>`;
-    if (has("dark mode", "light mode", "theme", "dark theme")) return `<p>Use the <b>sun/moon button</b> in the top bar to switch light and dark. It follows your system setting by default and remembers your choice.</p>`;
-    if (has("mobile", "phone", "responsive")) return `<p>Yes, it's responsive, the sidebar and panels stack on smaller screens so it works on a phone.</p>`;
-    if (has("who made", "who built", "who created", "author", "your creator")) return `<p>It's a <b>portfolio project by Shafay</b>, built to demonstrate proactive, ATSPM-style signal management, raw data to a ranked list of what to fix.</p>`;
-    if (has("how many", "number of signal") || hasW("count")) return `<p>${SIG.length} signals total; the queue ranks all ${P.length}. ${highN} ${highN === 1 ? "is" : "are"} High priority right now.</p>`;
-
-    // 11) greeting (whole word, so "this"/"high" don't trigger it)
-    if (hasW("hi", "hello", "hey", "yo", "hiya", "sup") || has("good morning", "good afternoon")) {
-      return `<p>Hi, I'm the dashboard helper. I can explain what this is and how it works, define any metric, or answer from the live data, what to retime first, the alerts, or any intersection. Try a chip below.</p>`;
-    }
-
-    // 12) fallback
-    return `<p>I'm not sure I caught that. I can help with:</p><ul class="asst-list"><li><b>What this is</b> and how it's built</li><li>The <b>metrics</b> (split failures, arrivals-on-red, pedestrian delay, volume)</li><li><b>How alerts are detected</b> and the <b>priority score</b></li><li>Live data: the <b>worst signal</b>, current <b>alerts</b>, or any <b>intersection</b> ("why SIG-1003")</li></ul>`;
+    var t = q.toLowerCase().trim(), words = t.replace(/[^\w\s]/g, " ").split(/\s+/).filter(Boolean);
+    var has = function () { for (var i = 0; i < arguments.length; i++) if (t.indexOf(arguments[i]) >= 0) return true; return false; };
+    var hasW = function () { for (var i = 0; i < arguments.length; i++) if (words.indexOf(arguments[i]) >= 0) return true; return false; };
+    var P = V.priority, top = P[0], A = V.alerts, sid = asstFindSignal(t);
+    if (sid) return asstSigCard(V.byId[sid]);
+    if (has("what can you", "what do you do", "capab", "who are you", "help")) return "<p>I read the dashboard's live numbers. Ask me what to retime first, about alerts, a specific intersection (e.g. “why SIG-1003”), or a metric.</p>";
+    if (has("what is this", "what's this", "about this", "what is the dash", "explain this", "purpose")) return "<p>A <b>signal performance command center</b> for a DOT analyst: which signals are misbehaving and which to retime first. Donut = network health, center = signals needing attention; the hero shows arrivals-on-red trends, a split-failure heatmap, and the ranked retiming queue. " + SIG.length + " intersections.</p>";
+    if (has("how does it work", "how is this built", "tech", "pipeline", "real data", "data come", "synthetic")) return "<p>Numbers are computed live in your browser from a real ATSPM-style pipeline (Python: clean → score → anomaly-detect). Underlying signal data is synthetic but schema-faithful to UDOT ATSPM exports, swap in real CSVs and it runs unchanged.</p>";
+    if (t === "" || has("happening", "summary", "overview", "status", "going on")) { var f = A.filter(function (a) { return a.metric === "volume"; })[0]; return "<p><b>" + esc(top.loc) + "</b> (" + top.id + ") is the top retiming candidate, score " + top.score + " (" + top.pri + "). " + V.counts.High + " high-priority, " + A.length + " alerts" + (f ? ", including a likely detector fault at <b>" + f.id + "</b>" : "") + ".</p>"; }
+    if (has("worst", "retime", "first", "priority", "fix", "attention")) return asstSigCard(top);
+    if (has("alert", "anomal", "fault", "detector", "broken")) { if (!A.length) return "<p>No alerts in this window.</p>"; return "<p>" + A.length + " alerts:</p><ul>" + A.slice(0, 6).map(function (a) { return "<li><b>" + a.id + "</b> " + esc(a.reason) + "</li>"; }).join("") + "</ul>"; }
+    if (has("split fail") || hasW("split", "sf")) return "<p><b>Split failures</b> = phases that ran out of green (55% of the score). <b>" + esc(top.loc) + "</b> leads with " + top.pmsf + " PM-peak failures.</p>";
+    if (has("arrivals", "on red", "progression") || hasW("aor")) return "<p><b>Arrivals-on-red</b>: share of vehicles hitting a red (30% of score). Network avg " + V.totals.aor.toFixed(1) + "%.</p>";
+    if (hasW("volume", "vph", "vehicles", "traffic")) return "<p><b>Volume</b> averages " + (V.totals.vol / 1000).toFixed(1) + "K vehicles/day across the network.</p>";
+    if (has("pedestrian") || hasW("ped", "walk")) return "<p><b>Pedestrian delay</b>: avg wait after a button press (15% of score). Network avg " + V.totals.ped.toFixed(1) + "s.</p>";
+    if (has("score", "composite", "weight", "rank")) return "<p>Composite score = 55% PM split failures + 30% arrivals-on-red + 15% pedestrian delay, min-max normalized across " + P.length + " signals, 0–100. ≥70 High, ≥40 Medium.</p>";
+    if (has("dark", "light", "theme")) return "<p>Use the <b>theme button</b> in the top bar to switch light/dark; it follows your system by default.</p>";
+    if (hasW("hi", "hello", "hey", "yo")) return "<p>Hi — I'm the dashboard helper. Ask what to retime first, about alerts, or any intersection.</p>";
+    return "<p>I can answer from the live data: the <b>worst signal</b>, current <b>alerts</b>, a specific <b>intersection</b> (“why SIG-1003”), or a metric (split failures, arrivals-on-red, volume, ped delay).</p>";
   }
+  function closeAsst() { $("#asst").classList.remove("on"); $("#asst").setAttribute("aria-hidden", "true"); }
   function wireAssistant() {
-    const panel = $("#asst"), btn = $("#asstBtn"), body = $("#asstBody"), chips = $("#asstChips"), form = $("#asstForm"), input = $("#asstInput");
-    if (!panel || !btn) return;
-    let greeted = false;
-    const add = (html, who) => { const m = document.createElement("div"); m.className = "asst-msg " + who; if (who === "user") m.textContent = html; else m.innerHTML = html; body.appendChild(m); body.scrollTop = body.scrollHeight; };
-    const ask = (q) => { add(q, "user"); setTimeout(() => add(asstAnswer(q), "bot"), 180); };
-    const SUGG = ["What is this?", "What's happening?", "What do I retime first?", "Any alerts?", "How does it work?"];
-    chips.innerHTML = ""; SUGG.forEach((c) => { const b = document.createElement("button"); b.className = "asst-chip"; b.textContent = c; b.addEventListener("click", () => ask(c)); chips.appendChild(b); });
-    try { if (!localStorage.getItem("sp_asst_seen")) btn.classList.add("nudge"); } catch (e) {}
-    const open = () => { panel.classList.add("is-on"); panel.setAttribute("aria-hidden", "false"); btn.setAttribute("aria-expanded", "true"); btn.classList.remove("nudge"); try { localStorage.setItem("sp_asst_seen", "1"); } catch (e) {} if (!greeted) { greeted = true; add(asstAnswer(""), "bot"); } setTimeout(() => input.focus(), 80); };
-    const close = () => { panel.classList.remove("is-on"); panel.setAttribute("aria-hidden", "true"); btn.setAttribute("aria-expanded", "false"); };
-    btn.addEventListener("click", () => (panel.classList.contains("is-on") ? close() : open()));
-    $("#asstClose").addEventListener("click", close);
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && panel.classList.contains("is-on")) close(); });
-    form.addEventListener("submit", (e) => { e.preventDefault(); const q = input.value.trim(); if (!q) return; input.value = ""; ask(q); });
-    body.addEventListener("click", (e) => { const a = e.target.closest(".asst-action"); if (a) { const r = V.priority.find((x) => x.id === a.dataset.sig); if (r) openDrawer(r); } });
+    var panel = $("#asst"), fab = $("#asstFab"), body = $("#asstBody"), chips = $("#asstChips"), form = $("#asstForm"), input = $("#asstInput"), greeted = false;
+    function add(html, who) { var m = document.createElement("div"); m.className = "asst-msg " + who; if (who === "user") m.textContent = html; else m.innerHTML = html; body.appendChild(m); body.scrollTop = body.scrollHeight; }
+    function ask(q) { add(q, "user"); setTimeout(function () { add(asstAnswer(q), "bot"); }, 160); }
+    ["What is this?", "What do I retime first?", "Any alerts?", "Explain the score"].forEach(function (c) { var b = document.createElement("button"); b.className = "asst-chip"; b.textContent = c; b.addEventListener("click", function () { ask(c); }); chips.appendChild(b); });
+    try { if (!localStorage.getItem("sp_asst_seen")) { var n = document.createElement("span"); n.className = "nudge"; fab.appendChild(n); } } catch (e) {}
+    function open() { panel.classList.add("on"); panel.setAttribute("aria-hidden", "false"); var nd = fab.querySelector(".nudge"); if (nd) nd.remove(); try { localStorage.setItem("sp_asst_seen", "1"); } catch (e) {} if (!greeted) { greeted = true; add(asstAnswer(""), "bot"); } setTimeout(function () { input.focus(); }, 80); }
+    fab.addEventListener("click", function () { panel.classList.contains("on") ? closeAsst() : open(); });
+    $("#asstX").addEventListener("click", closeAsst);
+    form.addEventListener("submit", function (e) { e.preventDefault(); var q = input.value.trim(); if (!q) return; input.value = ""; ask(q); });
+    body.addEventListener("click", function (e) { var a = e.target.closest(".asst-act"); if (a) { openDrawer(a.dataset.sig); } });
   }
 
-  /* ================= refresh / load / init ================= */
-  function refresh(animateKpi) {
-    V.cur = rowsFor(winIndices());
-    V.prev = rowsFor(priorIndices());
-    V.priority = computePriority(V.cur);
-    V.kpis = computeKpis(V.cur, V.prev, V.priority);
-    V.alerts = computeAlerts(V.cur);
-    V.insight = computeInsight(V.priority, V.cur);
-    renderInsight(); renderKpis(animateKpi); renderTabCounts(); renderActiveTab();
-  }
-
-  function runLoad() {
-    const p = $("#progress"); p.style.width = "0";
-    requestAnimationFrame(() => { p.style.width = "72%"; });
-    setTimeout(() => { p.style.width = "100%"; setTimeout(() => { p.style.opacity = "0"; }, 200); refresh(true); }, 620);
-  }
-
+  // ---- init ----
   function init() {
-    try { const s = localStorage.getItem("sp_tab"); if (s) state.tab = s; } catch (e) {}
-    // topbar date + sample tag from the data window
-    const td = $("#topbarDate"); if (td) td.textContent = `${FMT.DOW[TODAY.getDay()]} ${FMT.MON[TODAY.getMonth()]} ${TODAY.getDate()}`;
-    const sc = $("#sampleCount"); if (sc) sc.textContent = `${SIG.length} signals`;
-
-    renderSigChips(); renderDow(); renderLegend();
-    wireFilters(); wireTabs(); wireUserMenu(); wireThemeToggle(); wireAssistant(); updateFilterActive();
-    $$(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === state.tab));
-    $$(".tabpanel").forEach((p) => p.classList.toggle("is-on", p.id === "panel-" + state.tab));
-    moveUnderline();
-
-    $("#scrim").addEventListener("click", closeDrawer);
-    $("#drawerClose").addEventListener("click", closeDrawer);
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
-
-    refresh(false);   // immediate visible content (never strands blank)
-    runLoad();        // progress bar + count-up
+    compute();
+    renderStatic();
+    wireTheme(); wireClicks(); wireAssistant();
+    animateProg();
   }
-
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
-  else init();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

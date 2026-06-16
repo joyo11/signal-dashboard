@@ -2,230 +2,121 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Signal Performance</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Signal Performance — Command Center</title>
+<meta name="description" content="DOT signal operations command center: which signals are misbehaving, and which to retime first. Live-computed from an ATSPM-style pipeline." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..40,400;9..40,500;9..40,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<script>(function(){try{var s=localStorage.getItem('sp_theme');var d=s?s==='dark':matchMedia('(prefers-color-scheme:dark)').matches;if(d)document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
-<link rel="stylesheet" href="styles.css" />
-<link rel="stylesheet" href="components.css" />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script>(function(){try{var s=localStorage.getItem('sp_theme');var d=s?s==='dark':(window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.setAttribute('data-theme', d?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
+<link rel="stylesheet" href="app.css" />
 </head>
 <body>
-<div class="progress-line" id="progress"></div>
-
 <div class="app">
-  <!-- ================= TOP BAR ================= -->
-  <header class="topbar">
+
+  <!-- HEADER -->
+  <header class="hdr">
     <div class="brand">
-      <span class="brand-mark" aria-hidden="true">
-        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-          <circle cx="6.5" cy="2.6" r="1.7" fill="#C0392B"/>
-          <circle cx="6.5" cy="6.5" r="1.7" fill="#C97A1E"/>
-          <circle cx="6.5" cy="10.4" r="1.7" fill="#1F6E43"/>
-        </svg>
-      </span>
-      <span class="brand-name">Signal Performance</span>
-    </div>
-    <div class="topbar-spacer"></div>
-    <div class="topbar-date">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-      <span id="topbarDate">Thu Jun 4</span>
-    </div>
-    <button class="topbar-theme" id="asstBtn" aria-label="Open dashboard assistant" aria-expanded="false" title="Ask the dashboard">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-    </button>
-    <button class="topbar-theme" id="themeBtn" aria-label="Toggle dark theme" aria-pressed="false" title="Toggle theme">
-      <svg class="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-      <svg class="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg>
-    </button>
-    <div class="topbar-userwrap">
-      <button class="topbar-user" id="userBtn" aria-haspopup="true" aria-expanded="false" title="A. Reyes — Traffic Operations">AR</button>
-      <div class="user-menu" id="userMenu" role="menu" hidden>
-        <div class="user-menu-id">
-          <div class="user-menu-name">A. Reyes</div>
-          <div class="user-menu-role">Traffic Operations</div>
-        </div>
-        <button class="user-menu-item" role="menuitem" disabled>Settings <span class="demo-tag">demo</span></button>
-        <button class="user-menu-item" role="menuitem" disabled>Sign out <span class="demo-tag">demo</span></button>
+      <div class="brand-mk" aria-hidden="true"><i class="r"></i><i class="a"></i><i class="g"></i></div>
+      <div>
+        <div class="brand-t1">Signal&nbsp;Ops</div>
+        <div class="brand-t2">SIGNAL PERFORMANCE · UDOT DISTRICT 2</div>
       </div>
+    </div>
+    <nav class="nav" id="nav">
+      <button data-view="trend" class="on">Overview</button>
+      <button data-view="trend">Performance</button>
+      <button data-view="queue">Priority</button>
+      <button data-view="heatmap">Alerts</button>
+    </nav>
+    <div class="spacer"></div>
+    <div class="live"><i></i><span id="liveLabel">LIVE</span></div>
+    <button class="hbtn" id="themeBtn" aria-label="Toggle theme">
+      <svg class="ico-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg class="ico-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg>
+      <span id="themeLabel">Theme</span>
+    </button>
+    <div class="user">
+      <div><div class="nm">M. Reyes</div><div class="rl">Signal Analyst</div></div>
+      <div class="av">MR</div>
     </div>
   </header>
 
-  <!-- ================= SIDEBAR ================= -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-head">
-      <span class="sidebar-title">Filters</span>
-      <button class="sidebar-reset" id="resetFilters">Reset</button>
-    </div>
+  <!-- BODY -->
+  <div class="body">
+    <!-- LEFT RAIL -->
+    <aside class="rail">
+      <section class="card nh fade">
+        <div class="nh-top">
+          <h2 class="sec-t">NETWORK HEALTH</h2>
+          <span class="mono" style="font-size:10px;color:var(--mute)" id="nhCount">12 signals</span>
+        </div>
+        <div id="donut"></div>
+        <div class="nh-rows" id="nhRows"></div>
+      </section>
+      <section class="card alerts fade" style="animation-delay:.06s">
+        <div class="sec-h">
+          <h2 class="sec-t">RECENT ALERTS</h2>
+          <span class="mono" style="font-size:10px;color:var(--alert)" id="alertCrit"></span>
+        </div>
+        <div class="alerts-body" id="alertsBody"></div>
+      </section>
+    </aside>
 
-    <!-- Signals -->
-    <div class="filter-card" id="fc-sigs">
-      <span class="caption">Charted signals</span>
-      <div class="chip-row" id="sigChips"></div>
-    </div>
-
-    <!-- Dates -->
-    <div class="filter-card" id="fc-dates">
-      <span class="caption">Date window</span>
-      <div class="seg" id="dateSeg">
-        <button data-win="3">3d</button>
-        <button data-win="7" class="is-on">7d</button>
-        <button data-win="14">14d</button>
-      </div>
-    </div>
-
-    <!-- Days of week -->
-    <div class="filter-card" id="fc-days">
-      <span class="caption">Days</span>
-      <div class="dow-row" id="dowRow"></div>
-    </div>
-
-    <!-- Sigma threshold -->
-    <div class="filter-card" id="fc-sigma">
-      <span class="caption">Anomaly threshold</span>
-      <div style="display:flex;align-items:baseline;justify-content:space-between">
-        <span style="font-size:12.5px;color:var(--mute)">σ ≥</span>
-        <span class="sigma-val" id="sigmaVal">2.5</span>
-      </div>
-      <input type="range" class="sigma" id="sigmaSlider" min="1" max="5" step="0.5" value="2.5" />
-      <div class="sigma-scale"><span>1σ</span><span>3σ</span><span>5σ</span></div>
-    </div>
-
-    <div class="sample-tag">
-      <span class="pulse-dot"></span>
-      Sample data · <span id="sampleCount">12 signals</span> · refreshed 06:00
-    </div>
-  </aside>
-
-  <!-- ================= MAIN ================= -->
-  <main class="main">
-    <div class="main-inner">
-
-      <!-- Insight banner -->
-      <div class="insight stagger-item" id="insight">
-        <span class="insight-ico" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z"/></svg>
-        </span>
-        <p class="insight-text" id="insightText"></p>
-      </div>
-
-      <!-- KPI strip -->
-      <div class="kpi-strip stagger" id="kpiStrip"></div>
-
-      <!-- Tabs -->
-      <div class="tabs" id="tabs">
-        <button class="tab is-active" data-tab="performance">Performance</button>
-        <button class="tab" data-tab="priority">Priority<span class="tab-count">12</span></button>
-        <button class="tab" data-tab="alerts">Alerts<span class="tab-count" id="alertTabCount">7</span></button>
-        <span class="tab-underline" id="tabUnderline"></span>
-      </div>
-
-      <!-- ===== PERFORMANCE ===== -->
-      <section class="tabpanel is-on" id="panel-performance">
-        <div class="section">
-          <div class="panel">
-            <div class="panel-head">
-              <div>
-                <div class="panel-title">Arrivals-on-Red over window</div>
-                <div class="panel-sub">Hourly, all selected intersections · <span id="lcWindow">May 29 – Jun 4</span></div>
-              </div>
-            </div>
-            <div class="legend-row" id="lineLegend"></div>
-            <div id="lineChart" class="real"></div>
+    <!-- CENTER -->
+    <main class="center">
+      <div class="kpis" id="kpis"></div>
+      <section class="card hero fade" style="animation-delay:.1s">
+        <div class="hero-h">
+          <div>
+            <h2 class="serif">Signal Performance</h2>
+            <p id="heroSub">Arrivals-on-red &amp; split failures</p>
+          </div>
+          <div class="seg" id="seg">
+            <button data-view="trend" class="on">Trend</button>
+            <button data-view="queue">Retiming Queue</button>
+            <button data-view="heatmap">Heatmap</button>
           </div>
         </div>
+        <div class="hero-body" id="heroBody"></div>
+      </section>
+    </main>
 
-        <div class="section">
-          <div class="panel-head" style="padding:0 2px">
-            <div>
-              <div class="panel-title">Hour-of-day pattern</div>
-              <div class="panel-sub">Average arrivals-on-red by hour · shared y-axis</div>
-            </div>
+    <!-- RIGHT RAIL -->
+    <aside class="rail">
+      <section class="card rq fade" style="animation-delay:.14s">
+        <div class="sec-h" style="display:block">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <h2 class="sec-t">RETIMING QUEUE</h2>
+            <button id="viewAll" style="font-size:10.5px;font-weight:500;color:var(--accent);background:none;border:none;cursor:pointer">View all →</button>
           </div>
-          <div class="two-col">
-            <div class="panel"><div id="smWeekday" class="real"></div></div>
-            <div class="panel"><div id="smWeekend" class="real"></div></div>
-          </div>
+          <p style="font-size:10.5px;color:var(--mute);margin-top:3px">Composite: 55% PM split · 30% AoR · 15% ped delay</p>
+        </div>
+        <div class="rq-body" id="rqBody"></div>
+        <div class="rq-foot">
+          <span style="font-size:10.5px;color:var(--mute)">Next maintenance window</span>
+          <span class="mono" style="font-size:11.5px;font-weight:600" id="maint">—</span>
         </div>
       </section>
+    </aside>
+  </div>
 
-      <!-- ===== PRIORITY ===== -->
-      <section class="tabpanel" id="panel-priority">
-        <div class="section">
-          <div class="panel">
-            <div class="panel-head">
-              <div>
-                <div class="panel-title">Retiming queue</div>
-                <div class="panel-sub">Ranked by composite score · 12 signals</div>
-              </div>
-              <div class="panel-sub">Click a row for detail</div>
-            </div>
-            <div class="ptable-wrap"><table class="ptable" id="ptable"></table></div>
-          </div>
-        </div>
-
-        <div class="section">
-          <div class="panel">
-            <div class="panel-head">
-              <div>
-                <div class="panel-title">Split failures by hour</div>
-                <div class="panel-sub">Total over window · empty hours left blank</div>
-              </div>
-              <div class="panel-sub" id="heatScale"></div>
-            </div>
-            <div id="heatmap" class="real"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===== ALERTS ===== -->
-      <section class="tabpanel" id="panel-alerts">
-        <div class="section two-col">
-          <div class="panel">
-            <div class="panel-head"><div class="panel-title">Alerts per signal</div></div>
-            <div id="alertBars" class="real"></div>
-          </div>
-          <div class="panel">
-            <div class="panel-head"><div class="panel-title">Severity over time</div></div>
-            <div id="alertScatter" class="real"></div>
-          </div>
-        </div>
-        <div class="section">
-          <div class="alert-feed" id="alertFeed"></div>
-        </div>
-      </section>
-
-    </div>
-  </main>
+  <!-- BOTTOM STRIP -->
+  <footer class="bottom" id="bottom"></footer>
 </div>
 
-<!-- ================= DRAWER ================= -->
+<!-- DRAWER -->
 <div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer" aria-hidden="true">
-  <div class="drawer-head">
-    <div>
-      <div class="drawer-id"><span class="sdot" id="drawerDot" style="width:9px;height:9px;border-radius:50%;display:inline-block"></span><span id="drawerId"></span></div>
-      <div class="drawer-title" id="drawerTitle"></div>
-    </div>
-    <button class="drawer-close" id="drawerClose" aria-label="Close">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
-    </button>
-  </div>
-  <div class="drawer-body" id="drawerBody"></div>
-  <div class="drawer-foot">
-    <button class="btn btn--primary" style="flex:1;justify-content:center">Open retiming ticket</button>
-    <button class="btn btn--ghost">Export</button>
-  </div>
-</aside>
+<aside class="drawer" id="drawer" aria-hidden="true"></aside>
 
-<!-- ================= ASSISTANT ================= -->
+<!-- ASSISTANT -->
+<button class="asst-fab" id="asstFab" aria-label="Ask the dashboard">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+</button>
 <aside class="asst" id="asst" aria-hidden="true">
-  <div class="asst-head">
-    <div class="asst-title"><span class="asst-dot"></span> Dashboard assistant</div>
-    <button class="asst-close" id="asstClose" aria-label="Close assistant">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
-    </button>
+  <div class="asst-h">
+    <div class="t"><i></i> Dashboard assistant</div>
+    <button class="asst-x" id="asstX" aria-label="Close">✕</button>
   </div>
   <div class="asst-body" id="asstBody"></div>
   <div class="asst-chips" id="asstChips"></div>
@@ -237,11 +128,7 @@
   </form>
 </aside>
 
-<!-- footer note -->
-<a href="component-sheet.html" style="position:fixed;bottom:14px;right:18px;font-size:11.5px;color:var(--mute);font-family:var(--mono);text-decoration:none;border:1px solid var(--line);background:var(--surface);padding:5px 9px;border-radius:7px;z-index:40">Component sheet ↗</a>
-
 <script src="data.js"></script>
-<script src="charts.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
