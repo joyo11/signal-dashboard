@@ -121,7 +121,7 @@
   }
 
   // ---- state + view ----
-  var state = { hero: "map", selected: null, prog: 0, page: "ops" };
+  var state = { hero: "map", selected: null, prog: 0, page: "ops", tlRange: "24h" };
   var V = null;
   function compute() {
     var cur = rowsFor(winIdx()), prior = rowsFor(priorIdx());
@@ -445,6 +445,46 @@
     else if (state.hero === "map" && _map) setTimeout(function () { _map.invalidateSize(); }, 60);
   }
 
+  // ---- signal timeline (24h / 7d / 14d) ----
+  function sigSeries(sidx, range) {
+    var aor = [], sf = [], ped = [], labels = [];
+    if (range === "24h") {
+      var d = ND - 1;
+      for (var h = 0; h < 24; h++) { var r = rowMap[sidx + "_" + d + "_" + h]; aor.push(r ? r.aor : 0); sf.push(r ? r.sf : 0); ped.push(r ? r.ped : 0); }
+    } else {
+      var days = range === "7d" ? range2(ND - 7, ND - 1) : range2(0, ND - 1);
+      days.forEach(function (dd) {
+        var aS = 0, pS = 0, sS = 0, n = 0;
+        for (var h = 0; h < 24; h++) { var r = rowMap[sidx + "_" + dd + "_" + h]; if (r) { aS += r.aor; pS += r.ped; sS += r.sf; n++; } }
+        aor.push(n ? aS / n : 0); ped.push(n ? pS / n : 0); sf.push(sS); labels.push(dd);
+      });
+    }
+    return { aor: aor, sf: sf, ped: ped };
+  }
+  function range2(a, b) { var o = []; for (var i = a; i <= b; i++) o.push(i); return o; }
+  function tlSpark(vals, colorVar) {
+    var W = 340, H = 40, pl = 2, pr = 2, pt = 6, pb = 6, pw = W - pl - pr, ph = H - pt - pb;
+    var max = Math.max.apply(null, vals) || 1, n = vals.length;
+    var X = function (i) { return pl + (n === 1 ? pw / 2 : i * (pw / (n - 1))); }, Y = function (v) { return pt + (1 - v / max) * ph; };
+    var pts = vals.map(function (v, i) { return X(i) + "," + Y(v); }).join(" ");
+    var col = cssVar(colorVar);
+    var last = vals[vals.length - 1], first = vals[0], trend = last > first * 1.05 ? "↑" : last < first * 0.95 ? "↓" : "→";
+    return { svg: '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" preserveAspectRatio="none" style="display:block"><polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="1.6" stroke-linejoin="round"/></svg>', trend: trend };
+  }
+  function renderTimeline() {
+    var box = document.getElementById("tlBox"); if (!box || !state.selected) return;
+    var sidx = sigById[state.selected].idx, s = sigSeries(sidx, state.tlRange);
+    function block(title, vals, colorVar, fmt) {
+      var sp = tlSpark(vals, colorVar), last = vals[vals.length - 1];
+      return '<div class="tl-metric"><span>' + title + '</span><span class="mono">' + fmt(last) + ' ' + sp.trend + '</span></div>' + sp.svg;
+    }
+    box.innerHTML =
+      block("Arrivals-on-Red", s.aor, "--amber", function (v) { return v.toFixed(0) + "%"; }) +
+      block("Split Failures", s.sf, "--alert", function (v) { return Math.round(v); }) +
+      block("Pedestrian Delay", s.ped, "--s1", function (v) { return v.toFixed(0) + "s"; });
+    Array.prototype.forEach.call(document.querySelectorAll(".tl-tabs button"), function (b) { b.classList.toggle("on", b.dataset.tl === state.tlRange); });
+  }
+
   // ---- drawer ----
   function openDrawer(id) {
     var r = V.byId[id]; if (!r) return;
@@ -470,11 +510,16 @@
       '<h3 class="dr-h3">CURRENT METRICS</h3><div class="dr-metrics">' +
       drM("Arrivals-on-Red", r.aor.toFixed(0) + "%") + drM("Split Failures (PM)", r.pmsf) +
       drM("Pedestrian Delay", r.ped.toFixed(0) + "s") + drM("Daily Volume", r.volK) +
-      '</div>' + faultHtml + '</div>' +
+      '</div>' +
+      '<h3 class="dr-h3">PERFORMANCE TREND</h3>' +
+      '<div class="tl-tabs"><button data-tl="24h">Last 24h</button><button data-tl="7d">Last 7d</button><button data-tl="14d">Last 14d</button></div>' +
+      '<div id="tlBox"></div>' +
+      faultHtml + '</div>' +
       '<div class="dr-foot"><button class="primary">Add to retiming plan<span class="demo-tag">demo</span></button><button class="ghost">Open log<span class="demo-tag">demo</span></button></div>';
     $("#drX").addEventListener("click", closeDrawer);
     $("#scrim").classList.add("on");
     $("#drawer").classList.add("on"); $("#drawer").setAttribute("aria-hidden", "false");
+    renderTimeline();
     animateBars();
   }
   function drM(l, v) { return '<div class="dr-m"><div class="l">' + l + '</div><div class="v">' + v + '</div></div>'; }
@@ -522,6 +567,7 @@
     document.body.addEventListener("click", function (e) {
       var sigEl = e.target.closest("[data-sig]"); if (sigEl) { if (_map) _map.closePopup(); openDrawer(sigEl.dataset.sig); return; }
       var navEl = e.target.closest("#nav button"); if (navEl && navEl.dataset.page) { switchPage(navEl.dataset.page); return; }
+      var tl = e.target.closest(".tl-tabs button"); if (tl && tl.dataset.tl) { state.tlRange = tl.dataset.tl; renderTimeline(); return; }
       var seg = e.target.closest("#seg button"); if (seg && seg.dataset.view) { state.hero = seg.dataset.view; renderHero(); return; }
     });
     $("#scrim").addEventListener("click", closeDrawer);
