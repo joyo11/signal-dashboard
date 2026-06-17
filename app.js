@@ -22,6 +22,17 @@
   var rowMap = {}; D.raw.forEach(function (r) { rowMap[r.s + "_" + r.d + "_" + r.h] = r; });
   var winEndDate = dayMeta[ND - 1].date;
 
+  // Real Salt Lake City coordinates for each intersection (SLC street grid).
+  // Geocoded from the signal names so map markers sit on actual streets.
+  var COORDS = {
+    "SIG-1001": [40.76275, -111.88861], "SIG-1002": [40.75912, -111.88861],
+    "SIG-1003": [40.75550, -111.88861], "SIG-1004": [40.75187, -111.88861],
+    "SIG-1005": [40.75731, -111.89577], "SIG-1006": [40.75912, -111.89816],
+    "SIG-1007": [40.76275, -111.87907], "SIG-1008": [40.76230, -111.87680],
+    "SIG-1009": [40.73193, -111.87429], "SIG-1010": [40.73918, -111.86474],
+    "SIG-1011": [40.75368, -111.86952], "SIG-1012": [40.76637, -111.85997]
+  };
+
   var PRI = { High: "var(--alert)", Med: "var(--amber)", Low: "var(--healthy)" };
   var PRIBG = { High: "rgba(229,87,62,.13)", Med: "rgba(224,162,60,.13)", Low: "rgba(79,176,122,.13)" };
 
@@ -110,7 +121,7 @@
   }
 
   // ---- state + view ----
-  var state = { hero: "trend", selected: null, prog: 0 };
+  var state = { hero: "map", selected: null, prog: 0, page: "ops" };
   var V = null;
   function compute() {
     var cur = rowsFor(winIdx()), prior = rowsFor(priorIdx());
@@ -127,11 +138,23 @@
       r.last = ((sigById[r.id].idx * 7) % 14 + 1) + " mo"; // cosmetic: synthetic last-retimed
       byId[r.id] = r;
     });
+    var alerts = computeAlerts(cur);
+    var offline = Object.keys(faults).length;
+    var health = Math.round((counts.Low + 0.5 * counts.Med) / SIG.length * 100);
+    var totals = { sf: sumAll("sf"), aor: meanAll("aor"), ped: meanAll("ped"), vol: sumAll("vol") / WIN };
+    var ops = [
+      { lb: "Signals Online", v: SIG.length - offline, un: "of " + SIG.length, dot: "var(--healthy)" },
+      { lb: "Signals Offline", v: offline, un: "detector fault", dot: offline ? "var(--alert)" : "var(--mute)" },
+      { lb: "Active Alerts", v: alerts.length, un: "last " + WIN + "d", dot: "var(--amber)" },
+      { lb: "High Priority", v: counts.High, un: "need retiming", dot: "var(--alert)" },
+      { lb: "Network Health", v: health, un: "%", dot: health >= 80 ? "var(--healthy)" : health >= 60 ? "var(--amber)" : "var(--alert)" },
+      { lb: "Avg Delay", v: Math.round(totals.ped), un: "sec", dot: "var(--accent)" }
+    ];
     V = {
-      cur: cur, priority: priority, byId: byId, counts: counts,
+      cur: cur, priority: priority, byId: byId, counts: counts, faults: faults,
       kpis: computeKpis(cur, prior, priority),
-      alerts: computeAlerts(cur),
-      totals: { sf: sumAll("sf"), aor: meanAll("aor"), ped: meanAll("ped"), vol: sumAll("vol") / WIN },
+      alerts: alerts, ops: ops, offline: offline, health: health,
+      totals: totals,
       attention: counts.High + counts.Med
     };
   }
@@ -213,28 +236,69 @@
     $("#nhCount").textContent = SIG.length + " signals";
     $("#alertCrit").textContent = V.alerts.filter(function (a) { return Math.abs(a.sev) > 4; }).length + " critical";
     $("#liveLabel").textContent = "LIVE · " + FMT.MON[winEndDate.getMonth()] + " " + winEndDate.getDate();
-    $("#maint").textContent = "Tue " + FMT.MON[winEndDate.getMonth()] + " " + (winEndDate.getDate() + 3);
     // network health rows
     $("#nhRows").innerHTML =
       nhRow("hi", "var(--alert)", "High priority", V.counts.High) +
       nhRow("", "var(--amber)", "Medium priority", V.counts.Med) +
       nhRow("", "var(--healthy)", "Low / nominal", V.counts.Low);
-    // alerts
-    $("#alertsBody").innerHTML = V.alerts.map(function (a) {
-      var edge = Math.abs(a.sev) > 4 ? "var(--alert)" : "var(--amber)";
-      return '<button class="alert" data-sig="' + a.id + '" style="border-left-color:' + edge + '">' +
-        '<div style="flex:1;min-width:0"><div class="r1"><span class="id" style="color:' + edge + '">' + a.id + '</span><span class="tm">' + relTime(a.when) + '</span></div>' +
-        '<div class="rs">' + esc(a.reason) + '</div></div></button>';
-    }).join("");
-    // bottom strip
+    renderOps();
+    renderIncidents();
+    renderDevice();
+    renderCams();
+    // bottom mini metric totals
     $("#bottom").innerHTML =
       bm(ICON.split, "var(--alert)", "Split Failures", V.totals.sf, "this window", function (v) { return String(Math.round(v)); }) +
       bm(ICON.red, "var(--amber)", "Arrivals-on-Red", V.totals.aor, "network avg", function (v) { return v.toFixed(1) + "%"; }) +
       bm(ICON.ped, "var(--s1)", "Pedestrian Delay", V.totals.ped, "avg per cycle", function (v) { return v.toFixed(1) + "s"; }) +
       bm(ICON.vol, "var(--healthy)", "Total Volume", V.totals.vol / 1000, "daily avg", function (v) { return v.toFixed(1) + "K"; });
-    renderKpis(REDUCED ? 1 : 0);
     renderRightQueue();
     renderHero();
+  }
+
+  function renderOps() {
+    $("#opsKpis").innerHTML = V.ops.map(function (o) {
+      return '<div class="ops"><div class="lb">' + o.lb + '</div><div class="row"><span class="vn"><span class="dot" style="background:' + o.dot + '"></span>' + o.v + '</span><span class="un">' + o.un + '</span></div></div>';
+    }).join("");
+  }
+
+  var INCIDENT = {
+    volume: { ic: "📡", lab: "Detector Failure", bg: "rgba(229,87,62,.14)", col: "var(--alert)" },
+    sf: { ic: "▦", lab: "Excessive Split Failures", bg: "rgba(224,162,60,.14)", col: "var(--amber)" },
+    aor: { ic: "◐", lab: "High Arrivals-on-Red", bg: "rgba(224,162,60,.14)", col: "var(--amber)" }
+  };
+  function renderIncidents() {
+    $("#alertsBody").innerHTML = V.alerts.map(function (a) {
+      var t = INCIDENT[a.metric] || INCIDENT.aor, edge = Math.abs(a.sev) > 4 ? "var(--alert)" : "var(--amber)";
+      return '<button class="alert" data-sig="' + a.id + '" style="border-left-color:' + edge + '">' +
+        '<div class="inc-ic" style="background:' + t.bg + ';color:' + t.col + '">' + t.ic + '</div>' +
+        '<div style="flex:1;min-width:0"><div class="r1"><span class="id" style="color:' + edge + '">' + a.id + '</span><span class="tm">' + relTime(a.when) + '</span></div>' +
+        '<div class="rs"><b>' + t.lab + '</b> · ' + esc(a.reason) + '</div></div></button>';
+    }).join("");
+  }
+
+  function renderDevice() {
+    $("#devUpd").textContent = "updated " + relTime(winEndDate) + " ago";
+    var online = SIG.length - V.offline, det = V.offline, comm = 0; // comm failures: none in sample (simulated field)
+    $("#devBody").innerHTML =
+      devRow("var(--healthy)", "Signals online", online + " / " + SIG.length) +
+      devRow(V.offline ? "var(--alert)" : "var(--mute)", "Signals offline", V.offline) +
+      devRow(det ? "var(--alert)" : "var(--mute)", "Detector failures", det) +
+      devRow(comm ? "var(--amber)" : "var(--mute)", "Communication failures", comm) +
+      devRow("var(--accent)", "Network uptime", V.health >= 80 ? "Nominal" : "Degraded");
+  }
+  function devRow(col, l, v) { return '<div class="dev-row"><span class="l"><i style="background:' + col + '"></i>' + l + '</span><span class="v">' + v + '</span></div>'; }
+
+  function renderCams() {
+    var cams = [
+      { id: "CAM-101", loc: "State St & 800 South" },
+      { id: "CAM-102", loc: "700 East & 2100 South" },
+      { id: "CAM-103", loc: "University & 200 South" }
+    ];
+    var camIcon = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#9db7cf" stroke-width="1.4"><path d="M2 7h11v10H2z"/><path d="M13 10l6-3v10l-6-3"/></svg>';
+    $("#cams").innerHTML = cams.map(function (c) {
+      return '<div class="cam"><div class="pic"><span class="live">● LIVE</span>' + camIcon + '<span class="ts">' + FMT.MON[winEndDate.getMonth()] + " " + winEndDate.getDate() + ' 09:42</span></div>' +
+        '<div class="cap"><div class="id">' + c.id + '</div><div class="loc">' + esc(c.loc) + '</div></div></div>';
+    }).join("");
   }
   function nhRow(cls, col, lab, n) { return '<div class="nh-row ' + cls + '"><span class="sw" style="background:' + col + '"></span><span class="lb">' + lab + '</span><span class="vn" style="color:' + col + '">' + n + '</span></div>'; }
   function bm(ic, col, lab, target, unit, fmt) { return '<div class="card bm"><div class="ic" style="color:' + col + '">' + ic + '</div><div style="flex:1"><div class="lb">' + lab + '</div><div class="row"><span class="vn bm-num" data-t="' + target + '" data-fmt2="1">' + fmt(REDUCED ? target : 0) + '</span><span class="un">' + unit + '</span></div></div></div>'; window._bmfmt = fmt; }
@@ -262,16 +326,16 @@
 
   function renderHero() {
     var hv = state.hero, body = $("#heroBody");
-    // sync segmented + nav
     Array.prototype.forEach.call(document.querySelectorAll("#seg button"), function (b) { b.classList.toggle("on", b.dataset.view === hv); });
-    Array.prototype.forEach.call(document.querySelectorAll("#nav button"), function (b) {
-      var on = (hv === "trend" && b.textContent === "Overview") || (hv === "queue" && b.textContent === "Priority") || (hv === "heatmap" && b.textContent === "Alerts");
-      b.classList.toggle("on", on);
-    });
-    $("#heroSub").textContent = hv === "queue" ? "Ranked retiming queue · all " + SIG.length + " signals"
+    $("#heroTitle").textContent = hv === "map" ? "Traffic Network" : "Signal Performance";
+    $("#heroSub").textContent = hv === "map" ? "All signals · colored by retiming priority"
+      : hv === "queue" ? "Ranked retiming queue · all " + SIG.length + " signals"
       : hv === "heatmap" ? "Split failures · signal × hour-of-day" : "Arrivals-on-red by hour · weekday + weekend";
 
-    if (hv === "trend") {
+    if (hv === "map") {
+      body.innerHTML = '<div id="map"></div><div class="map-legend"><div class="r"><span class="sw" style="background:var(--alert)"></span>High priority</div><div class="r"><span class="sw" style="background:var(--amber)"></span>Medium</div><div class="r"><span class="sw" style="background:var(--healthy)"></span>Low / nominal</div></div>';
+      initMap();
+    } else if (hv === "trend") {
       var sc = [cssVar("--s1"), cssVar("--s2"), cssVar("--s3"), cssVar("--s4")];
       var legend = D.featured.map(function (f, i) { return '<span class="l"><i style="background:' + sc[i] + '"></i>' + f.id + '</span>'; }).join("");
       body.innerHTML =
@@ -313,6 +377,73 @@
     });
   }
   function paintDonut() { $("#donut").innerHTML = donutSVG(state.prog); }
+
+  // ---- map (Leaflet) ----
+  var _map = null;
+  function priHex(pri) { return cssVar(pri === "High" ? "--alert" : pri === "Med" ? "--amber" : "--healthy"); }
+  function initMap() {
+    var el = document.getElementById("map"); if (!el || !window.L) return;
+    if (_map) { _map.remove(); _map = null; }
+    _map = L.map(el, { zoomControl: true, attributionControl: false }).setView([40.752, -111.882], 13);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(_map);
+    var bounds = [];
+    V.priority.forEach(function (r) {
+      var c = COORDS[r.id]; if (!c) return; bounds.push(c);
+      var col = priHex(r.pri);
+      var m = L.circleMarker(c, { radius: r.pri === "High" ? 11 : r.pri === "Med" ? 8 : 6, color: "#fff", weight: 1.5, fillColor: col, fillOpacity: 0.92 }).addTo(_map);
+      var rec = r.pri === "High" ? "Retiming recommended for PM peak period" : r.pri === "Med" ? "Monitor; review PM split allocation" : "Operating within normal range";
+      m.bindPopup(
+        '<div class="pop-id" style="color:' + col + '">' + r.id + (r.fault ? " · ⚠ fault" : "") + '</div>' +
+        '<div class="pop-loc">' + esc(r.loc) + '</div>' +
+        '<div class="pop-grid">' +
+        '<span>Priority score</span><span class="mono" style="color:' + col + '">' + r.score + " (" + r.pri + ")</span>" +
+        '<span>Arrivals on red</span><span class="mono">' + r.aor.toFixed(0) + '%</span>' +
+        '<span>Split failures</span><span class="mono">' + r.pmsf + '</span>' +
+        '<span>Ped delay</span><span class="mono">' + r.ped.toFixed(0) + 's</span>' +
+        '</div><div style="font-size:10.5px;color:var(--mute);margin-top:7px">' + rec + '</div>' +
+        '<button class="pop-btn" data-sig="' + r.id + '">Open signal detail →</button>'
+      );
+    });
+    if (bounds.length) _map.fitBounds(bounds, { padding: [40, 40] });
+    setTimeout(function () { if (_map) _map.invalidateSize(); }, 140);
+  }
+
+  // ---- corridor monitoring ----
+  function renderCorridors() {
+    var groups = {};
+    V.priority.forEach(function (r) { (groups[r.corr] = groups[r.corr] || []).push(r); });
+    var cards = Object.keys(groups).map(function (name) {
+      var g = groups[name], n = g.length;
+      var avgAor = g.reduce(function (a, r) { return a + r.aor; }, 0) / n;
+      var avgPed = g.reduce(function (a, r) { return a + r.ped; }, 0) / n;
+      var sumSf = g.reduce(function (a, r) { return a + r.pmsf; }, 0);
+      var avgScore = g.reduce(function (a, r) { return a + r.score; }, 0) / n;
+      var health = Math.max(0, Math.round(100 - avgScore));
+      var col = health >= 80 ? "var(--healthy)" : health >= 60 ? "var(--amber)" : "var(--alert)";
+      var label = health >= 80 ? "Healthy" : health >= 60 ? "Watch" : "Action";
+      return { name: name, n: n, avgAor: avgAor, avgPed: avgPed, sumSf: sumSf, health: health, col: col, label: label };
+    }).sort(function (a, b) { return a.health - b.health; });
+    $("#corrWrap").innerHTML = cards.map(function (c) {
+      return '<div class="corr"><div class="corr-h"><span class="nm">' + esc(c.name) + '</span>' +
+        '<span class="badge" style="color:' + c.col + ';background:' + c.col.replace("var(--alert)", "rgba(229,87,62,.14)").replace("var(--amber)", "rgba(224,162,60,.14)").replace("var(--healthy)", "rgba(63,191,106,.14)") + '">' + c.label + '</span></div>' +
+        '<div class="corr-health"><i style="width:' + c.health + '%;background:' + c.col + '"></i></div>' +
+        '<div class="corr-grid">' +
+        '<div class="corr-m"><div class="l">Avg Arrivals-on-Red</div><div class="v">' + c.avgAor.toFixed(0) + '%</div></div>' +
+        '<div class="corr-m"><div class="l">Avg Delay</div><div class="v">' + c.avgPed.toFixed(0) + 's</div></div>' +
+        '<div class="corr-m"><div class="l">Split Failures (PM)</div><div class="v">' + c.sumSf + '</div></div>' +
+        '<div class="corr-m"><div class="l">Health Score</div><div class="v" style="color:' + c.col + '">' + c.health + '</div></div>' +
+        '</div><div class="corr-sub"><span>' + c.n + ' signal' + (c.n !== 1 ? "s" : "") + '</span><span>' + esc(c.name) + ' corridor</span></div></div>';
+    }).join("");
+  }
+
+  function switchPage(p) {
+    state.page = p;
+    Array.prototype.forEach.call(document.querySelectorAll("#nav button"), function (b) { b.classList.toggle("on", b.dataset.page === p); });
+    document.getElementById("page-ops").style.display = p === "ops" ? "" : "none";
+    document.getElementById("page-corridors").style.display = p === "corridors" ? "" : "none";
+    if (p === "corridors") renderCorridors();
+    else if (state.hero === "map" && _map) setTimeout(function () { _map.invalidateSize(); }, 60);
+  }
 
   // ---- drawer ----
   function openDrawer(id) {
@@ -360,11 +491,11 @@
 
   // ---- count-up + donut sweep ----
   function animateProg() {
-    if (REDUCED) { state.prog = 1; renderKpis(1); paintDonut(); setBottom(1); return; }
+    if (REDUCED) { state.prog = 1; paintDonut(); setBottom(1); return; }
     var t0 = performance.now(), dur = 900;
     function tick(now) {
       var p = Math.min(1, (now - t0) / dur); p = 1 - Math.pow(1 - p, 3); state.prog = p;
-      renderKpis(p); paintDonut(); setBottom(p);
+      paintDonut(); setBottom(p);
       if (p < 1) requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
@@ -389,8 +520,9 @@
   // ---- delegation ----
   function wireClicks() {
     document.body.addEventListener("click", function (e) {
-      var sigEl = e.target.closest("[data-sig]"); if (sigEl) { openDrawer(sigEl.dataset.sig); return; }
-      var seg = e.target.closest("#seg button, #nav button"); if (seg && seg.dataset.view) { state.hero = seg.dataset.view; renderHero(); return; }
+      var sigEl = e.target.closest("[data-sig]"); if (sigEl) { if (_map) _map.closePopup(); openDrawer(sigEl.dataset.sig); return; }
+      var navEl = e.target.closest("#nav button"); if (navEl && navEl.dataset.page) { switchPage(navEl.dataset.page); return; }
+      var seg = e.target.closest("#seg button"); if (seg && seg.dataset.view) { state.hero = seg.dataset.view; renderHero(); return; }
     });
     $("#scrim").addEventListener("click", closeDrawer);
     $("#viewAll").addEventListener("click", function () { state.hero = "queue"; renderHero(); });
