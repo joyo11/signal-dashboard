@@ -37,7 +37,10 @@ import clean_data  # noqa: E402
 import model  # noqa: E402
 from generate_sample_data import generate  # noqa: E402
 
-WINDOW_END = pd.Timestamp("2026-06-05")  # generate() backs off 1h -> last ts Jun 4 23:00
+# Window ends "today" so the dashboard always reads current (last hour =
+# today 23:00). Re-run this script to refresh; seed stays fixed so the
+# patterns/story are stable, only the dates roll forward.
+WINDOW_END = pd.Timestamp.now().normalize() + pd.Timedelta(days=1)
 TOTAL_DAYS = 14
 
 # The four "featured" signals are charted with a curated palette; the rest
